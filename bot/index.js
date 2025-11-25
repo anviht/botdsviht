@@ -196,6 +196,26 @@ client.on('messageCreate', async (message) => {
     // Prevent duplicate processing
     if (processedMessages.has(message.id)) return;
     processedMessages.add(message.id);
+
+    // Ensure DB ready for greeted users tracking
+    try { if (db && db.ensureReady) await db.ensureReady(); } catch (e) { console.warn('DB ensureReady failed:', e && e.message); }
+
+    // Greet new users only once: if message is a short greeting and user not seen, reply and record
+    try {
+      const greetingsRx = /^(?:hi|hello|привет|здравствуй|здраствуй|салют|добрый\s+день)[!.]?$/i;
+      const text = (message.content || '').trim();
+      if (greetingsRx.test(text)) {
+        const greeted = (db && db.get) ? db.get('greetedUsers') || {} : {};
+        if (!greeted[message.author.id]) {
+          // send a single greeting
+          await message.reply(`Привет, ${message.author.username}! 👋 Я Viht, виртуальный помощник проекта Viht. Чем могу помочь?`);
+          // mark as greeted
+          greeted[message.author.id] = Date.now();
+          try { if (db && db.set) await db.set('greetedUsers', greeted); } catch (e) { console.warn('Failed to persist greetedUsers:', e && e.message); }
+          return; // don't process further for pure greeting
+        }
+      }
+    } catch (e) { console.warn('Greeting logic failed:', e && e.message); }
     
     const now = Date.now(); 
     const last = lastMessageAt.get(message.author.id) || 0; 
