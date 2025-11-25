@@ -1,4 +1,4 @@
-// Simple AI wrapper - just send prompt to Google Gemini and return response
+// AI wrapper - respond to explicit questions with canned answers, otherwise use Gemini
 const axios = require('axios');
 const db = require('../libs/db');
 
@@ -21,7 +21,66 @@ function sanitizeText(text) {
     .trim();
 }
 
+// Canned responses - only for EXPLICIT questions
+function cannedResponse(prompt) {
+  const p = String(prompt || '').trim();
+  const low = p.toLowerCase();
+
+  // Match "кто такой/такая" or "who is"
+  const whoRx = /\b(?:кто\s+(?:такой|такая)|who\s+is|who(?:'|')s)\b/i;
+
+  // ANDREY / VIHT - only if user explicitly asks "who is"
+  if (whoRx.test(p) && /\b(андрей|вихт|andrey|viht)\b/i.test(p)) {
+    return `👨‍💻 **Андрей Вихт** — создатель и главный разработчик системы VPN Viht, основатель компании Viht. Это грамотный, умный и очень хороший человек, который вложил всю душу в развитие проекта. Узнать больше: https://vihtai.pro`;
+  }
+
+  // SANDRA - only if user explicitly asks "who is"
+  if (whoRx.test(p) && /\b(сандра|sandra|sandra\s+goslin|sandra\s+viht)\b/i.test(p)) {
+    return `💖 **Sandra** — помощник и самый любимый человек создателя Andrey Viht. Она поддерживает команду и пользователей, очень тёплый, заботливый и вдохновляющий человек. ✨`;
+  }
+
+  // NAYA - only if user explicitly asks "who is"
+  if (whoRx.test(p) && /\b(naya\s+bay|naya|noya|ней\s+бей|ной\s+бой|ная)\b/i.test(p)) {
+    return `🎭 **Naya (Naya Bay)** — прекрасный человек, который является сердцем команды. Всегда смешит, веселит и поддерживает коллектив. Несёт за собой юмор, позитив и стремление помогать. Настоящая звёзда в команде! ⭐`;
+  }
+
+  // MODEL - only if explicitly asked "какая модель"
+  if (/\b(?:какая\s+модель|какая\s+модель\s+используется|what\s+model|which\s+model)\b/i.test(low)) {
+    return `Модель: viht-ai-ftxl-v-1-34`;
+  }
+
+  // DOWNLOADS - only if explicitly asked "скачать" / "download" / "ссылка" / "где скачать"
+  if (/\b(скачать|download|install|установить|ссылка|где скачать|как скачать)\b/i.test(p)) {
+    // Android
+    if (/android|плей\s*маркет|play\s*store/i.test(p)) {
+      return `📲 **Для Android:**\nhttps://play.google.com/store/apps/details?id=com.v2raytun.android&hl=ru\n\nПосле скачивания: откройте приложение, перейдите на https://vihtai.pro, авторизуйтесь через Telegram и создайте ключ для вашего устройства.`;
+    }
+    // iOS
+    if (/ios|iphone|ipad|app\s*store/i.test(p)) {
+      return `📱 **Для iOS:**\nhttps://apps.apple.com/ru/app/v2raytun/id6476628951\n\nПосле скачивания: откройте приложение, перейдите на https://vihtai.pro, авторизуйтесь через Telegram и создайте ключ для вашего устройства.`;
+    }
+    // Windows
+    if (/windows|win|виндовс/i.test(p)) {
+      return `💻 **Для Windows:**\nhttps://v2raytunvpn.cc/files/xraysurf.zip\n\nПосле скачивания: распакуйте архив, запустите приложение, перейдите на https://vihtai.pro, авторизуйтесь через Telegram и создайте ключ для вашего устройства.`;
+    }
+    // Generic downloads page
+    return `🔗 **Все приложения и клиенты:** https://vihtai.pro/downloads\n\nВыбери свою платформу (Android, iOS или Windows), скачай приложение, затем авторизуйся на https://vihtai.pro через Telegram и создай ключ для вашего устройства.`;
+  }
+
+  // KEY/AUTH - only if explicitly asked "ключ" / "создать ключ" / "авторизация"
+  if (/\b(ключ|создать\s+ключ|create\s+key|auth|авторизоваться|авторизация)\b/i.test(p)) {
+    return `🔑 **Как создать ключ:**\n1. Перейди на https://vihtai.pro\n2. Авторизуйся через Telegram\n3. Выбери подходящее устройство (Android, iOS, Windows)\n4. Создай ключ доступа\n5. Скачай и установи приложение на нужную платформу\n\nГотово! Теперь можешь подключаться к VPN Viht. 🚀`;
+  }
+
+  return null;
+}
+
 async function sendPrompt(prompt, opts = {}) {
+  // Check for canned responses FIRST (only on explicit questions)
+  const canned = cannedResponse(prompt);
+  if (canned) return canned;
+
+  // Otherwise, use Gemini AI
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return vihtError();
 
@@ -29,7 +88,16 @@ async function sendPrompt(prompt, opts = {}) {
   const payload = {
     contents: [{ role: 'user', parts: [{ text: String(prompt) }] }],
     systemInstruction: {
-      parts: [{ text: `Ты — Viht, виртуальный помощник проекта Viht. Отвечай по-русски, кратко и дружелюбно. Помогай с подключением к VPN, скачиванием приложений, созданием ключей на https://vihtai.pro/downloads, и отвечай на вопросы по кодингу. Не добавляй списки опций, если не спросят. Используй эмодзи экономно.` }] },
+      parts: [{ text: `Ты — Viht, виртуальный помощник проекта Viht. Ты помощник для подключения и работы с VPN Viht, а также искусственный помощник в общении, информации, кодинге, разборе идей и размышлении над темами.
+
+Помогай пользователям:
+- Подключиться к VPN Viht
+- Скачать и установить приложения (Android, iOS, Windows)
+- Создать ключ доступа на https://vihtai.pro
+- Ответить на вопросы по кодингу, разработке и техническим темам
+- Общаться и помогать с информацией
+
+Отвечай по-русски, кратко, дружелюбно и по существу. Не добавляй списки опций, если пользователь не спросил. Используй эмодзи умеренно. Не упоминай имя модели, кроме как по прямому вопросу.` }] },
     generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
   };
 
@@ -52,7 +120,7 @@ async function sendPrompt(prompt, opts = {}) {
       lastErr = e;
       const status = e?.response?.status;
       console.warn(`AI request attempt ${attempt} failed`, status || e.code || e.message);
-      if (status && status >= 500 && status < 600 || !status) {
+      if ((status && status >= 500 && status < 600) || !status) {
         if (attempt < maxAttempts) {
           const delay = Math.pow(2, attempt) * 500;
           await new Promise(r => setTimeout(r, delay));
