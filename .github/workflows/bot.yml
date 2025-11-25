@@ -5,6 +5,7 @@ on:
     branches: [ main ]
   schedule:
     - cron: '0 * * * *'  # Запускается каждый час
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
   run-bot:
