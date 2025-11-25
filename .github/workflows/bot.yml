@@ -10,6 +10,7 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 5  # Terminate job after 5 minutes
     
     steps:
     - uses: actions/checkout@v3

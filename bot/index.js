@@ -183,11 +183,25 @@ if (handleReactionAdd) client.on('messageReactionAdd', async (reaction, user) =>
 
 // AI chat handler
 const { aiChatChannelId } = require('./config');
-const COOLDOWN_MS = 3000; const lastMessageAt = new Map();
+const COOLDOWN_MS = 3000; 
+const lastMessageAt = new Map();
+const processedMessages = new Set(); // Track processed messages
+
 client.on('messageCreate', async (message) => {
   try {
-    if (message.author?.bot) return; if (!message.channel) return; if (String(message.channel.id) !== String(aiChatChannelId)) return;
-    const now = Date.now(); const last = lastMessageAt.get(message.author.id) || 0; if (now - last < COOLDOWN_MS) return; lastMessageAt.set(message.author.id, now);
+    if (message.author?.bot) return; 
+    if (!message.channel) return; 
+    if (String(message.channel.id) !== String(aiChatChannelId)) return;
+    
+    // Prevent duplicate processing
+    if (processedMessages.has(message.id)) return;
+    processedMessages.add(message.id);
+    
+    const now = Date.now(); 
+    const last = lastMessageAt.get(message.author.id) || 0; 
+    if (now - last < COOLDOWN_MS) return; 
+    lastMessageAt.set(message.author.id, now);
+    
     try {
       const cfg = require('./config');
       if (cfg.useMockAi) {
@@ -206,9 +220,11 @@ client.on('messageCreate', async (message) => {
       const reply = await sendPrompt(message.content, { callerIsCreator, authorId: message.author.id, authorName: message.author.username });
       await db.incrementAi();
       const out = String(reply || '').trim();
-      for (let i = 0; i < out.length; i += 1200) {
-        const chunk = out.slice(i, i + 1200);
-        await message.reply(chunk);
+      if (out.length > 0) {
+        for (let i = 0; i < out.length; i += 1200) {
+          const chunk = out.slice(i, i + 1200);
+          await message.reply(chunk);
+        }
       }
     } catch (err) { console.error('AI error:', err); await message.reply('Ошибка: AI недоступен.'); }
   } catch (err) { console.error('messageCreate handler error', err); }
@@ -219,12 +235,16 @@ client.once('ready', async () => {
   console.log(`Ready as ${client.user.tag}`);
   console.log('Config flags:', { messageContentIntent, guildMembersIntent });
 
-  // Wait a bit for DB to initialize
-  await new Promise(r => setTimeout(r, 1000));
+  // Ensure DB is fully initialized
+  await db.ensureReady();
+  console.log('DB ready, proceeding with rules/support panel setup');
 
   // Post rules once
   try {
-    const RULES_CHANNEL_ID = '1436487842334507058'; const rulesRec = db.get ? db.get('rulesPosted') : null;
+    const RULES_CHANNEL_ID = '1436487842334507058'; 
+    const rulesRec = db.get('rulesPosted');
+    console.log('Rules check:', { rulesRec });
+    
     if (!rulesRec) {
       const channel = await client.channels.fetch(RULES_CHANNEL_ID).catch(() => null);
       if (channel) {
@@ -240,7 +260,8 @@ client.once('ready', async () => {
   // Post or update support panel
   try {
     const SUPPORT_CHANNEL_ID = '1442575929044897792';
-    const panelRec = db.get ? db.get('supportPanelPosted') : null;
+    const panelRec = db.get('supportPanelPosted');
+    console.log('Support panel check:', { panelRec });
     const supportChannel = await client.channels.fetch(SUPPORT_CHANNEL_ID).catch(() => null);
     if (!supportChannel) return console.warn('Support channel not found:', SUPPORT_CHANNEL_ID);
     const embed = new EmbedBuilder().setTitle('🛠️ Служба поддержки Viht').setColor(0x0066cc).setDescription('Нажмите кнопку ниже, чтобы создать новое обращение в службу поддержки. Пожалуйста, указывайте тему и подробности — это поможет нам быстрее решить вашу проблему.');
