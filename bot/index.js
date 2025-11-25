@@ -197,6 +197,42 @@ client.on('messageCreate', async (message) => {
     if (processedMessages.has(message.id)) return;
     processedMessages.add(message.id);
 
+    // Quick 'whoami' handler: respond with user info when user asks "кто я" or "я кто",
+    // but ignore cases containing "а я" (per request).
+    try {
+      const whoamiRegex = /^\s*(?:кто\s+я|я\s+кто)\b/i;
+      const excludeRegex = /\bа\s+я\b/i;
+      const text = (message.content || '').trim();
+      if (whoamiRegex.test(text) && !excludeRegex.test(text)) {
+        // Ensure we have member info
+        let member = message.member;
+        if ((!member || !member.roles) && message.guild) {
+          member = await message.guild.members.fetch(message.author.id).catch(() => null);
+        }
+
+        const user = message.author;
+        const created = user.createdAt ? new Date(user.createdAt) : null;
+        const createdStr = created ? `${String(created.getDate()).padStart(2,'0')}.${String(created.getMonth()+1).padStart(2,'0')}.${created.getFullYear()} ${String(created.getHours()).padStart(2,'0')}:${String(created.getMinutes()).padStart(2,'0')}` : '—';
+
+        let rolesList = 'Нет ролей';
+        if (member && member.roles && member.roles.cache) {
+          const filtered = member.roles.cache.filter(r => r.id !== message.guild.id);
+          if (filtered.size > 0) rolesList = filtered.map(r => `${r.name} (id: ${r.id})`).join(', ');
+        }
+
+        const reply = `🧾 **Информация о пользователе**
+**Вы:** ${user.username}
+**Ваш тег:** ${user.tag}
+**Ваш id:** ${user.id}
+**Зарегистрирован:** ${createdStr}
+**Роли:** ${rolesList} \n
+Если нужна подробная информация о ролях или правах — напишите, и я подскажу. 😊`;
+
+        try { await message.reply({ content: reply, allowedMentions: { parse: [] } }); } catch (e) { try { await message.channel.send(reply).catch(() => null); } catch (e2) {} }
+        return;
+      }
+    } catch (e) { console.warn('whoami handler failed', e && e.message ? e.message : e); }
+
     // Ensure DB ready for greeted users tracking
     try { if (db && db.ensureReady) await db.ensureReady(); } catch (e) { console.warn('DB ensureReady failed:', e && e.message); }
 
