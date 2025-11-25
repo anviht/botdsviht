@@ -49,9 +49,14 @@ async function handleReactionAdd(reaction, user) {
   try {
     if (user.bot) return;
     if (reaction.message.partial) await reaction.message.fetch();
-    const rec = db.get && db.get('welcome') && db.get('welcome').value ? db.get('welcome').value() : db.get('welcome');
+    // Read welcome record from DB (lowdb v3 stores plain objects)
+    const rec = (db && db.get) ? db.get('welcome') : null;
     if (!rec) return;
-    if (reaction.message.id !== rec.messageId) return;
+    // Allow assignment when reaction is on the exact saved welcome message OR
+    // as a fallback allow reactions in the configured welcome channel (useful if messageId changed)
+    const onSavedMessage = (reaction.message.id === rec.messageId);
+    const inWelcomeChannel = (String(reaction.message.channel.id) === String(rec.channelId));
+    if (!onSavedMessage && !inWelcomeChannel) return;
     if (reaction.emoji.name !== '✅') return;
     const guild = reaction.message.guild;
     const member = await guild.members.fetch(user.id);
@@ -77,7 +82,7 @@ async function handleReactionAdd(reaction, user) {
 
     // Try to add the role (may still fail if permissions missing)
     try {
-      await member.roles.add(role.id ? role.id : role);
+      await member.roles.add(role.id || role).catch(e => { throw e; });
 
       // After successful role assignment, post a welcome/announcement message to the announce channel
       try {
