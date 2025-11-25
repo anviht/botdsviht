@@ -287,11 +287,11 @@ client.once('ready', async () => {
       await statusChannel.send(aiStatus).catch(() => null);
       await new Promise(r => setTimeout(r, 3000));
 
-      // Message 3b: Commands list
-      const commandsList = Array.from(client.commands.values())
-        .map(cmd => `\`${cmd.data.name}\` — ${cmd.data.description || 'Нет описания'}`)
-        .join('\n');
-      const commandsMsg = `📋 **Консольные команды в норме:**\n${commandsList || 'Команды не загружены'}`;
+      // Message 3b: Commands list (public and admin-only)
+      const allCmds = Array.from(client.commands.values());
+      const adminCmds = allCmds.filter(c => c.adminOnly).map(cmd => `\`${cmd.data.name}\` — ${cmd.data.description || 'Нет описания'}`).join('\n') || 'Нет административных команд';
+      const publicCmds = allCmds.filter(c => !c.adminOnly).map(cmd => `\`${cmd.data.name}\` — ${cmd.data.description || 'Нет описания'}`).join('\n') || 'Нет публичных команд';
+      const commandsMsg = `📋 **Консольные команды в норме:**\n\n**Публичные команды:**\n${publicCmds}\n\n**Команды (только для роль 1436485697392607303):**\n${adminCmds}`;
       await statusChannel.send(commandsMsg).catch(() => null);
       await new Promise(r => setTimeout(r, 3000));
 
