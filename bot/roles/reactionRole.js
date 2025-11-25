@@ -89,10 +89,16 @@ async function handleReactionAdd(reaction, user) {
           const needed = ['ViewChannel', 'SendMessages', 'EmbedLinks'];
           const missing = perms ? needed.filter(p => !perms.has(p)) : needed;
           if (missing.length === 0) {
+            // Use user's tag (username#discriminator) in announcement and include id
             const welcomeEmbed = new EmbedBuilder()
-              .setTitle(`🎉 Приветствуем, ${member.displayName}!`)
+              .setTitle(`🎉 Приветствуем, ${member.user.tag}`)
               .setColor(0x00AE86)
-              .setDescription(`**Вам присвоена роль:** <@&${SUBSCRIBER_ROLE_ID}>\n\nМы рады видеть вас в сообществе Viht VPN. Желаем удачи и приятного общения!`)
+              .addFields(
+                { name: 'Пользователь', value: `${member.user.tag} (<@${member.id}>)`, inline: false },
+                { name: 'ID пользователя', value: `${member.id}`, inline: true },
+                { name: 'Роль выдана', value: `<@&${SUBSCRIBER_ROLE_ID}>`, inline: true }
+              )
+              .setFooter({ text: 'Роль выдана автоматически при подтверждении правил' })
               .setTimestamp();
             await announceChannel.send({ embeds: [welcomeEmbed] }).catch(e => console.warn('Failed to send announce message:', e && e.message ? e.message : e));
           } else {
