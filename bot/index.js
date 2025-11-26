@@ -81,7 +81,12 @@ const { sendPrompt } = require('./ai/vihtAi');
 
 // optional helpers
 let handleReactionAdd = null;
-try { handleReactionAdd = require('./roles/reactionRole').handleReactionAdd; } catch (e) { /* optional */ }
+let handleReactionRemove = null;
+try { 
+  const roleHandlers = require('./roles/reactionRole');
+  handleReactionAdd = roleHandlers.handleReactionAdd;
+  handleReactionRemove = roleHandlers.handleReactionRemove;
+} catch (e) { /* optional */ }
 try { const { initAutomod } = require('./moderation/automod'); initAutomod(client); } catch (e) { /* ignore */ }
 
 // Interaction handler: commands, buttons, modals
@@ -179,7 +184,8 @@ client.on('interactionCreate', async (interaction) => {
   } catch (err) { console.error('interactionCreate handler error', err); }
 });
 
-if (handleReactionAdd) client.on('messageReactionAdd', async (reaction, user) => { try { await handleReactionAdd(reaction, user); } catch (e) { console.error(e); } });
+if (handleReactionAdd) client.on('messageReactionAdd', async (reaction, user) => { try { await handleReactionAdd(reaction, user); } catch (e) { console.error('messageReactionAdd handler:', e); } });
+if (handleReactionRemove) client.on('messageReactionRemove', async (reaction, user) => { try { await handleReactionRemove(reaction, user); } catch (e) { console.error('messageReactionRemove handler:', e); } });
 
 // AI chat handler
 const { aiChatChannelId } = require('./config');
