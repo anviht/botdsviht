@@ -87,6 +87,11 @@ try {
   handleReactionAdd = roleHandlers.handleReactionAdd;
   handleReactionRemove = roleHandlers.handleReactionRemove;
 } catch (e) { /* optional */ }
+let handlePanelButton = null;
+try {
+  const dashboardAdmin = require('./dashboard-admin');
+  handlePanelButton = dashboardAdmin.getPanelButtonHandler();
+} catch (e) { console.warn('Dashboard-admin optional:', e && e.message); }
 try { const { initAutomod } = require('./moderation/automod'); initAutomod(client); } catch (e) { /* ignore */ }
 
 // Interaction handler: commands, buttons, modals
@@ -100,6 +105,12 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.isButton()) {
+      // Dashboard-admin panel buttons
+      if (handlePanelButton && (interaction.customId.includes('cabinet') || interaction.customId.includes('government') || interaction.customId.includes('shop') || interaction.customId.includes('back_') || interaction.customId.includes('gov_') || interaction.customId.includes('vote'))) {
+        try { await handlePanelButton(interaction); } catch (err) { console.error('Panel button error', err); await safeReply(interaction, { content: 'Ошибка при обработке кнопки.', ephemeral: true }); }
+        return;
+      }
+
       // Show support creation modal
       if (interaction.customId === 'support_create') {
         const modal = new ModalBuilder().setCustomId('support_modal').setTitle('Создать обращение');
@@ -285,6 +296,14 @@ const botStartTime = Date.now();
 client.once('ready', async () => {
   console.log(`Ready as ${client.user.tag}`);
   console.log('Config flags:', { messageContentIntent, guildMembersIntent });
+
+  // Initialize dashboard-admin
+  if (handlePanelButton) {
+    try {
+      const dashboardAdmin = require('./dashboard-admin');
+      await dashboardAdmin.initDashboardAdmin(client);
+    } catch (e) { console.warn('Dashboard-admin init error:', e && e.message); }
+  }
 
   // Ensure DB is fully initialized
   await db.ensureReady();
