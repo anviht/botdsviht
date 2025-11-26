@@ -44,6 +44,9 @@ async function handlePanelButton(interaction) {
   const guild = interaction.guild;
 
   try {
+    // Defer reply to prevent timeout
+    await interaction.deferUpdate().catch(() => null);
+
     if (customId === 'cabinet_main') {
       const member = await guild.members.fetch(user.id).catch(() => null);
       const embed = userCabinetEmbeds.createUserInfoEmbed(member);
@@ -53,7 +56,7 @@ async function handlePanelButton(interaction) {
         new ButtonBuilder().setCustomId('cabinet_status').setLabel('📊 Мой статус').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
-      await interaction.update({ embeds: [embed], components: [row] }).catch(() => null);
+      await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
 
     if (customId === 'cabinet_commands') {
@@ -61,7 +64,7 @@ async function handlePanelButton(interaction) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('back_cabinet').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
-      await interaction.update({ embeds: [embed], components: [row] }).catch(() => null);
+      await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
 
     if (customId === 'cabinet_balance') {
@@ -69,7 +72,7 @@ async function handlePanelButton(interaction) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('back_cabinet').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
-      await interaction.update({ embeds: [embed], components: [row] }).catch(() => null);
+      await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
 
     if (customId === 'cabinet_status') {
@@ -79,7 +82,7 @@ async function handlePanelButton(interaction) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('back_cabinet').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
-      await interaction.update({ embeds: [embed], components: [row] }).catch(() => null);
+      await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
 
     if (customId === 'government_main') {
@@ -90,7 +93,7 @@ async function handlePanelButton(interaction) {
         new ButtonBuilder().setCustomId('gov_voting').setLabel('📊 Голосование').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
-      await interaction.update({ embeds: [embed], components: [row] }).catch(() => null);
+      await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
 
     if (customId === 'gov_president_info') {
@@ -99,7 +102,7 @@ async function handlePanelButton(interaction) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('back_government').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
-      await interaction.update({ embeds: [embed], components: [row] }).catch(() => null);
+      await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
 
     if (customId === 'gov_reelection') {
@@ -107,7 +110,8 @@ async function handlePanelButton(interaction) {
       const isAdmin = member && member.roles.cache.has('1436485697392607303');
       
       if (!isAdmin) {
-        return await interaction.reply({ content: '❌ Только администраторы могут начать переизбрание', ephemeral: true }).catch(() => null);
+        await interaction.followUp({ content: '❌ Только администраторы могут начать переизбрание', ephemeral: true }).catch(() => null);
+        return;
       }
 
       // Remove president role from everyone
@@ -124,7 +128,7 @@ async function handlePanelButton(interaction) {
       const embed = new EmbedBuilder()
         .setTitle('🗳️ Голосование за нового Президента')
         .setColor(0x1a472a)
-        .setDescription(`Началось голосование! Выбирайте из ${validCandidates.length} кандидатов.\nГолосование длится 10 минут.`)
+        .setDescription(`✅ Голосование запущено!\nКандидатов: ${validCandidates.length}\nДлительность: 10 минут`)
         .setTimestamp();
 
       const votingRow = new ActionRowBuilder().addComponents(
@@ -132,11 +136,43 @@ async function handlePanelButton(interaction) {
         new ButtonBuilder().setCustomId('back_government').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
 
-      await interaction.update({ embeds: [embed], components: [votingRow] }).catch(() => null);
+      await interaction.editReply({ embeds: [embed], components: [votingRow] }).catch(() => null);
+      
+      // Notify all users
+      const panelChannel = await guild.channels.fetch('1443194196172476636').catch(() => null);
+      if (panelChannel) {
+        await panelChannel.send({
+          content: `🗳️ **Началось голосование за нового Президента!**\nПроголосуйте в панели управления. У вас есть 10 минут!`
+        }).catch(() => null);
+      }
+    }
+
+    if (customId === 'gov_voting') {
+      const voting = votingModel.getActiveVoting();
+      if (!voting) {
+        await interaction.followUp({ content: '❌ Нет активного голосования', ephemeral: true }).catch(() => null);
+        return;
+      }
+
+      const remaining = votingModel.getVotingRemainingSeconds();
+      const embed = new EmbedBuilder()
+        .setTitle('🗳️ Активное голосование')
+        .setColor(0x1a472a)
+        .addFields(
+          { name: 'Тип', value: 'Выбор Президента', inline: true },
+          { name: 'Осталось', value: `${remaining} сек`, inline: true }
+        )
+        .setTimestamp();
+
+      const votingRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('gov_vote_start').setLabel('🗳️ Голосовать').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('back_government').setLabel('← Назад').setStyle(ButtonStyle.Danger)
+      );
+
+      await interaction.editReply({ embeds: [embed], components: [votingRow] }).catch(() => null);
     }
 
     if (customId === 'back_main' || customId === 'back_cabinet' || customId === 'back_government') {
-      await createMainPanel(interaction.client);
       const embed = new EmbedBuilder()
         .setTitle('🎛️ Панель управления Viht')
         .setColor(0x2F3136)
@@ -146,7 +182,7 @@ async function handlePanelButton(interaction) {
         new ButtonBuilder().setCustomId('government_main').setLabel('🏛️ Государственная Дума').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId('shop_main').setLabel('🛍️ Магазин').setStyle(ButtonStyle.Secondary)
       );
-      await interaction.update({ embeds: [embed], components: [row] }).catch(() => null);
+      await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
 
     if (customId === 'shop_main') {
@@ -157,10 +193,71 @@ async function handlePanelButton(interaction) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
-      await interaction.update({ embeds: [embed], components: [row] }).catch(() => null);
+      await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
+    }
+
+    if (customId === 'gov_vote_start') {
+      const voting = votingModel.getActiveVoting();
+      if (!voting) {
+        await interaction.followUp({ content: '❌ Голосование завершилось', ephemeral: true }).catch(() => null);
+        return;
+      }
+
+      const candidates = await guild.members.fetch().catch(() => null);
+      const validCandidates = candidates ? Array.from(candidates.values()).filter(m => 
+        presidentModel.VALID_VOTER_ROLES.some(r => m.roles.cache.has(r)) && !m.user.bot
+      ) : [];
+
+      if (validCandidates.length === 0) {
+        await interaction.followUp({ content: '❌ Нет кандидатов для голосования', ephemeral: true }).catch(() => null);
+        return;
+      }
+
+      // Create vote buttons (max 5 per row, max 25 total)
+      const rows = [];
+      for (let i = 0; i < validCandidates.length; i += 5) {
+        const chunk = validCandidates.slice(i, i + 5);
+        const row = new ActionRowBuilder().addComponents(
+          ...chunk.map((c, idx) => new ButtonBuilder()
+            .setCustomId(`vote_${c.id}`)
+            .setLabel(c.user.username.slice(0, 20))
+            .setStyle(ButtonStyle.Secondary)
+          )
+        );
+        rows.push(row);
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle('🗳️ Выберите кандидата')
+        .setColor(0x1a472a)
+        .setDescription(`Выберите, за кого вы голосуете\nКандидатов: ${validCandidates.length}`)
+        .setTimestamp();
+
+      await interaction.followUp({ embeds: [embed], components: rows, ephemeral: true }).catch(() => null);
+    }
+
+    // Vote handlers
+    if (customId.startsWith('vote_')) {
+      const candidateId = customId.replace('vote_', '');
+      const voting = votingModel.getActiveVoting();
+
+      if (!voting) {
+        await interaction.followUp({ content: '❌ Голосование завершилось', ephemeral: true }).catch(() => null);
+        return;
+      }
+
+      // Record vote
+      if (!voting.votes) voting.votes = {};
+      voting.votes[user.id] = candidateId;
+      if (db && db.set) await db.set('voting', voting);
+
+      await interaction.followUp({ content: `✅ Ваш голос за <@${candidateId}> учтён!`, ephemeral: true }).catch(() => null);
     }
   } catch (e) {
     console.error('handlePanelButton error:', e.message);
+    try {
+      await interaction.followUp({ content: '❌ Ошибка при обработке кнопки', ephemeral: true }).catch(() => null);
+    } catch (e2) {}
   }
 }
 
