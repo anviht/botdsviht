@@ -385,6 +385,30 @@ client.once('ready', async () => {
   } catch (e) { console.warn('Failed to post rules on ready:', e && e.message ? e.message : e); }
   */
 
+  // Refresh welcome message on every startup (delete old, post new)
+  try {
+    const { sendWelcomeMessage } = require('./roles/reactionRole');
+    const WELCOME_CHANNEL_ID = '1436487788760535143';
+    const welcomeChannel = await client.channels.fetch(WELCOME_CHANNEL_ID).catch(() => null);
+    
+    if (welcomeChannel) {
+      const welcomeRec = db.get('welcome');
+      // Delete old message if it exists
+      if (welcomeRec && welcomeRec.messageId) {
+        try {
+          const oldMsg = await welcomeChannel.messages.fetch(welcomeRec.messageId).catch(() => null);
+          if (oldMsg) await oldMsg.delete().catch(() => null);
+          console.log('Deleted old welcome message:', welcomeRec.messageId);
+        } catch (e) { /* ignore */ }
+      }
+      // Post new welcome message
+      await sendWelcomeMessage(client, WELCOME_CHANNEL_ID);
+      console.log('Refreshed welcome message in', WELCOME_CHANNEL_ID);
+    } else {
+      console.warn('Welcome channel not found:', WELCOME_CHANNEL_ID);
+    }
+  } catch (e) { console.warn('Failed to refresh welcome message:', e && e.message ? e.message : e); }
+
   // Post or update support panel
   try {
     const SUPPORT_CHANNEL_ID = '1442575929044897792';
