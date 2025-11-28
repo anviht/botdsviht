@@ -28,6 +28,14 @@ jobs:
           ANNOUNCE_CHANNEL_ID: ${{ secrets.ANNOUNCE_CHANNEL_ID }}
           MUSIC_LOG_CHANNEL_ID: ${{ secrets.MUSIC_LOG_CHANNEL_ID }}
         run: |
+          echo "Cleaning previous bot processes (if any) and starting fresh"
+          # Attempt to kill any previously running bot process matching our entrypoint
+          pids=$(pgrep -f "node .*bot/index.js" || true)
+          if [ -n "$pids" ]; then
+            echo "Killing existing bot PIDs: $pids"
+            kill $pids || true
+            sleep 2
+          fi
           echo "Starting bot in background and keeping runner alive for 1 hour"
           nohup node bot/index.js > bot.log 2>&1 &
           BOT_PID=$!
