@@ -206,7 +206,7 @@ async function handlePanelButton(interaction) {
       const member = await guild.members.fetch(user.id).catch(() => null);
       const voiceChannel = member && member.voice ? member.voice.channel : null;
       if (!voiceChannel) {
-        await interaction.followUp({ content: '❌ Зайдите в голосовой канал, чтобы управлять музыкой.', ephemeral: true }).catch(() => null);
+        await interaction.reply({ content: '❌ Зайдите в голосовой канал, чтобы управлять музыкой.', ephemeral: true }).catch(() => null);
         return;
       }
 
@@ -220,7 +220,7 @@ async function handlePanelButton(interaction) {
           await interaction.showModal(modal);
         } catch (e) {
           console.error('showModal failed', e && e.message);
-          await interaction.followUp({ content: 'Не удалось открыть форму ввода.', ephemeral: true }).catch(() => null);
+          await interaction.reply({ content: 'Не удалось открыть форму ввода.', ephemeral: true }).catch(() => null);
         }
         return;
       }
@@ -245,22 +245,22 @@ async function handlePanelButton(interaction) {
       // handle in follow-up style
       if (customId === 'music_stop') {
         const ok = await musicPlayer.stop(guild);
-        await interaction.followUp({ content: ok ? '⏹ Плейер остановлен' : '❌ Не удалось остановить', ephemeral: true }).catch(() => null);
+        await interaction.reply({ content: ok ? '⏹ Плейер остановлен' : '❌ Не удалось остановить', ephemeral: true }).catch(() => null);
         return;
       }
       if (customId === 'music_next') {
         const ok = await musicPlayer.skip(guild);
-        await interaction.followUp({ content: ok ? '⏭ Пропускаю трек' : '❌ Не удалось пропустить', ephemeral: true }).catch(() => null);
+        await interaction.reply({ content: ok ? '⏭ Пропускаю трек' : '❌ Не удалось пропустить', ephemeral: true }).catch(() => null);
         return;
       }
       if (customId === 'music_vol_up') {
         const vol = await musicPlayer.changeVolume(guild, 0.1);
-        await interaction.followUp({ content: vol ? `🔊 Громкость: ${Math.round(vol*100)}%` : '❌ Ошибка изменения громкости', ephemeral: true }).catch(() => null);
+        await interaction.reply({ content: vol ? `🔊 Громкость: ${Math.round(vol*100)}%` : '❌ Ошибка изменения громкости', ephemeral: true }).catch(() => null);
         return;
       }
       if (customId === 'music_vol_down') {
         const vol = await musicPlayer.changeVolume(guild, -0.1);
-        await interaction.followUp({ content: vol ? `🔉 Громкость: ${Math.round(vol*100)}%` : '❌ Ошибка изменения громкости', ephemeral: true }).catch(() => null);
+        await interaction.reply({ content: vol ? `🔉 Громкость: ${Math.round(vol*100)}%` : '❌ Ошибка изменения громкости', ephemeral: true }).catch(() => null);
         return;
       }
       if (customId === 'music_queue_add') {
@@ -268,7 +268,7 @@ async function handlePanelButton(interaction) {
         const modal = new ModalBuilder().setCustomId('music_modal_queue').setTitle('Добавить в очередь');
         const input = new TextInputBuilder().setCustomId('music_query').setLabel('Ссылка или название').setStyle(TextInputStyle.Short).setRequired(true);
         modal.addComponents(new ActionRowBuilder().addComponents(input));
-        try { await interaction.showModal(modal); } catch (e) { await interaction.followUp({ content: 'Не удалось открыть форму.', ephemeral: true }).catch(() => null); }
+        try { await interaction.showModal(modal); } catch (e) { await interaction.reply({ content: 'Не удалось открыть форму.', ephemeral: true }).catch(() => null); }
         return;
       }
       if (customId === 'music_back') {
