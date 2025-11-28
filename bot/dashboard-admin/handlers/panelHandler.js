@@ -20,7 +20,6 @@ async function createMainPanel(client) {
       .setDescription('Привет! Выбери из кнопок что тебе необходимо');
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('cabinet_main').setLabel('👤 Личный кабинет').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('music_main').setLabel('🎵 Музыка').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('shop_main').setLabel('💲 Прайс').setStyle(ButtonStyle.Secondary)
     );
@@ -65,7 +64,7 @@ async function handlePanelButton(interaction) {
     if (customId === 'cabinet_commands') {
       const embed = userCabinetEmbeds.createCommandsEmbed();
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('back_cabinet').setLabel('← Назад').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
       await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
@@ -73,7 +72,7 @@ async function handlePanelButton(interaction) {
     if (customId === 'cabinet_balance') {
       const embed = userCabinetEmbeds.createBalanceEmbed(user);
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('back_cabinet').setLabel('← Назад').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
       await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
@@ -83,7 +82,7 @@ async function handlePanelButton(interaction) {
       const presidentData = await presidentModel.getCurrentPresident(guild);
       const embed = userCabinetEmbeds.createUserStatusEmbed(member, presidentData);
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('back_cabinet').setLabel('← Назад').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
       await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
@@ -103,7 +102,7 @@ async function handlePanelButton(interaction) {
       const presidentData = await presidentModel.getCurrentPresident(guild);
       const embed = governmentEmbeds.createPresidentInfoEmbed(presidentData);
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('back_government').setLabel('← Назад').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
       await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
@@ -138,7 +137,7 @@ async function handlePanelButton(interaction) {
 
       const votingRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('gov_vote_start').setLabel('🗳️ Голосовать').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('back_government').setLabel('← Назад').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
 
       await interaction.editReply({ embeds: [embed], components: [votingRow] }).catch(() => null);
@@ -171,19 +170,18 @@ async function handlePanelButton(interaction) {
 
       const votingRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('gov_vote_start').setLabel('🗳️ Голосовать').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('back_government').setLabel('← Назад').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
 
       await interaction.editReply({ embeds: [embed], components: [votingRow] }).catch(() => null);
     }
 
-    if (customId === 'back_main' || customId === 'back_cabinet' || customId === 'back_government') {
+    if (customId === 'back_main') {
       const embed = new EmbedBuilder()
         .setTitle('🎛️ Панель управления Viht')
         .setColor(0x2F3136)
         .setDescription('Привет! Выбери из кнопок что тебе необходимо');
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cabinet_main').setLabel('👤 Личный кабинет').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('music_main').setLabel('🎵 Музыка').setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId('shop_main').setLabel('💲 Прайс').setStyle(ButtonStyle.Secondary)
       );
