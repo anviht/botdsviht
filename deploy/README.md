@@ -81,3 +81,17 @@ docker-compose down
 Notes:
 - Put your `.env` file in the repository root (it is referenced by `deploy/docker-compose.yml`).
 - The compose file uses `restart: unless-stopped` so the container will restart automatically on failure or reboot.
+
+Run the published image (alternative)
+------------------------------------
+After you push to `main` the workflow will publish the image to GitHub Container Registry as `ghcr.io/<OWNER>/botdsviht:latest` (replace `<OWNER>` with your GitHub username or org).
+
+Example to run the published image on a host:
+
+```bash
+docker run -d --name viht-vpn-bot --restart unless-stopped \
+	--env-file /path/to/.env \
+	ghcr.io/<OWNER>/botdsviht:latest
+```
+
+Replace `<OWNER>` with your GitHub account (for this repo it is `anviht`).
