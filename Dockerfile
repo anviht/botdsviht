@@ -1,5 +1,5 @@
-# Use Node 18 (LTS)
-FROM node:18-alpine
+# Use Node 20 (required by some deps like undici)
+FROM node:20-alpine
 
 # Create app directory
 WORKDIR /usr/src/app
@@ -7,7 +7,7 @@ WORKDIR /usr/src/app
 # Copy package.json and lock first for better caching
 COPY package*.json ./
 
-# Install dependencies
+# Install dependencies (use lockfile-aware install)
 RUN npm ci --only=production
 
 # Copy rest of the sources
