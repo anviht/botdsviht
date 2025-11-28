@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  viht-vpn-bot:
+    build: ../
+    container_name: viht-vpn-bot
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      # Provide your secrets via .env file or environment variables in your host
+      # - DISCORD_TOKEN=...
+      # - GEMINI_API_KEY=...
+    env_file:
+      - ../.env
+    volumes:
+      - ../logs:/usr/src/app/logs
+    deploy:
+      restart_policy:
+        condition: on-failure
