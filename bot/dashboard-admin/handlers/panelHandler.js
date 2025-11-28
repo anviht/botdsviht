@@ -1,10 +1,12 @@
 // Panel handler — обработка кнопок панели управления
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const db = require('../../libs/db');
 const presidentModel = require('../models/presidentModel');
 const votingModel = require('../models/votingModel');
 const userCabinetEmbeds = require('../embeds/userCabinet');
 const governmentEmbeds = require('../embeds/government');
+const musicPlayer = require('../../music/player2');
+const radiosList = require('../../music/radios.json');
 
 const PANEL_CHANNEL_ID = '1443194196172476636';
 
@@ -20,8 +22,8 @@ async function createMainPanel(client) {
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('cabinet_main').setLabel('👤 Личный кабинет').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('government_main').setLabel('🏛️ Государственная Дума').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('shop_main').setLabel('🛍️ Магазин').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId('music_main').setLabel('🎵 Музыка').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('shop_main').setLabel('💲 Прайс').setStyle(ButtonStyle.Secondary)
     );
 
     const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
@@ -44,8 +46,10 @@ async function handlePanelButton(interaction) {
   const guild = interaction.guild;
 
   try {
-    // Defer reply to prevent timeout
-    await interaction.deferUpdate().catch(() => null);
+    // Defer reply to prevent timeout for most handlers, but avoid deferring for music modal flow
+    if (!customId.startsWith('music') && customId !== 'music_main') {
+      await interaction.deferUpdate().catch(() => null);
+    }
 
     if (customId === 'cabinet_main') {
       const member = await guild.members.fetch(user.id).catch(() => null);
@@ -181,21 +185,118 @@ async function handlePanelButton(interaction) {
         .setDescription('Привет! Выбери из кнопок что тебе необходимо');
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('cabinet_main').setLabel('👤 Личный кабинет').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('government_main').setLabel('🏛️ Государственная Дума').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('shop_main').setLabel('🛍️ Магазин').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('music_main').setLabel('🎵 Музыка').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('shop_main').setLabel('💲 Прайс').setStyle(ButtonStyle.Secondary)
       );
       await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
 
     if (customId === 'shop_main') {
       const embed = new EmbedBuilder()
-        .setTitle('🛍️ Магазин')
+        .setTitle('💲 Прайс')
         .setColor(0x2F3136)
-        .setDescription('🔧 Магазин в разработке...');
+        .setDescription('🔧 Прайс в разработке...');
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
       await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
+    }
+
+    // Music flow
+    if (customId === 'music_main') {
+      const member = await guild.members.fetch(user.id).catch(() => null);
+      const voiceChannel = member && member.voice ? member.voice.channel : null;
+      if (!voiceChannel) {
+        await interaction.followUp({ content: '❌ Зайдите в голосовой канал, чтобы управлять музыкой.', ephemeral: true }).catch(() => null);
+        return;
+      }
+
+      // If not playing - show modal to enter query/url
+      const playing = musicPlayer.isPlaying(guild);
+      if (!playing) {
+        const modal = new ModalBuilder().setCustomId('music_modal').setTitle('Воспроизвести музыку');
+        const input = new TextInputBuilder().setCustomId('music_query').setLabel('Название или ссылка').setStyle(TextInputStyle.Short).setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(input));
+        try {
+          await interaction.showModal(modal);
+        } catch (e) {
+          console.error('showModal failed', e && e.message);
+          await interaction.followUp({ content: 'Не удалось открыть форму ввода.', ephemeral: true }).catch(() => null);
+        }
+        return;
+      }
+
+      // If playing - show controls (ephemeral)
+      const embed = new EmbedBuilder().setTitle('🎵 Управление музыкой').setColor(0x1DB954).setDescription('Управление проигрывателем');
+      const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('music_back').setLabel('⏪ Назад').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('music_stop').setLabel('⏹ Остановить').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('music_next').setLabel('⏭ Вперёд').setStyle(ButtonStyle.Primary)
+      );
+      const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('music_vol_up').setLabel('🔊 Громче').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('music_vol_down').setLabel('🔉 Тише').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('music_queue_add').setLabel('➕ В очередь').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('music_radio').setLabel('📻 Радио').setStyle(ButtonStyle.Secondary)
+      );
+      await interaction.reply({ embeds: [embed], components: [row1, row2], ephemeral: true }).catch(() => null);
+      return;
+    }
+
+    if (customId === 'music_stop' || customId === 'music_next' || customId === 'music_vol_up' || customId === 'music_vol_down' || customId === 'music_queue_add' || customId === 'music_radio' || customId === 'music_back') {
+      // handle in follow-up style
+      if (customId === 'music_stop') {
+        const ok = await musicPlayer.stop(guild);
+        await interaction.followUp({ content: ok ? '⏹ Плейер остановлен' : '❌ Не удалось остановить', ephemeral: true }).catch(() => null);
+        return;
+      }
+      if (customId === 'music_next') {
+        const ok = await musicPlayer.skip(guild);
+        await interaction.followUp({ content: ok ? '⏭ Пропускаю трек' : '❌ Не удалось пропустить', ephemeral: true }).catch(() => null);
+        return;
+      }
+      if (customId === 'music_vol_up') {
+        const vol = await musicPlayer.changeVolume(guild, 0.1);
+        await interaction.followUp({ content: vol ? `🔊 Громкость: ${Math.round(vol*100)}%` : '❌ Ошибка изменения громкости', ephemeral: true }).catch(() => null);
+        return;
+      }
+      if (customId === 'music_vol_down') {
+        const vol = await musicPlayer.changeVolume(guild, -0.1);
+        await interaction.followUp({ content: vol ? `🔉 Громкость: ${Math.round(vol*100)}%` : '❌ Ошибка изменения громкости', ephemeral: true }).catch(() => null);
+        return;
+      }
+      if (customId === 'music_queue_add') {
+        // open modal to add to queue
+        const modal = new ModalBuilder().setCustomId('music_modal_queue').setTitle('Добавить в очередь');
+        const input = new TextInputBuilder().setCustomId('music_query').setLabel('Ссылка или название').setStyle(TextInputStyle.Short).setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(input));
+        try { await interaction.showModal(modal); } catch (e) { await interaction.followUp({ content: 'Не удалось открыть форму.', ephemeral: true }).catch(() => null); }
+        return;
+      }
+      if (customId === 'music_radio') {
+        // present radio options from radios.json
+        const rows = [];
+        for (let i = 0; i < radiosList.length; i += 5) {
+          const chunk = radiosList.slice(i, i + 5);
+          rows.push(new ActionRowBuilder().addComponents(...chunk.map(r => new ButtonBuilder().setCustomId(`radio_${r.id}`).setLabel(r.label).setStyle(ButtonStyle.Secondary))));
+        }
+        await interaction.reply({ content: 'Выберите радиостанцию', components: rows, ephemeral: true }).catch(() => null);
+        return;
+      }
+      if (customId === 'music_back') {
+        // go back to main panel view
+        const embed = new EmbedBuilder()
+          .setTitle('🎛️ Панель управления Viht')
+          .setColor(0x2F3136)
+          .setDescription('Привет! Выбери из кнопок что тебе необходимо');
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('cabinet_main').setLabel('👤 Личный кабинет').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId('music_main').setLabel('🎵 Музыка').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('shop_main').setLabel('💲 Прайс').setStyle(ButtonStyle.Secondary)
+        );
+        await interaction.update({ embeds: [embed], components: [row] }).catch(() => null);
+        return;
+      }
     }
 
     if (customId === 'gov_vote_start') {
@@ -234,6 +335,28 @@ async function handlePanelButton(interaction) {
         .setTimestamp();
 
       await interaction.followUp({ embeds: [embed], components: rows, ephemeral: true }).catch(() => null);
+    }
+
+    // Radio button pressed -> start station
+    if (customId.startsWith('radio_')) {
+      const stationId = customId.replace('radio_', '');
+      const station = radiosList.find(r => r.id === stationId);
+      if (!station) {
+        await interaction.followUp({ content: '❌ Радиостанция не найдена', ephemeral: true }).catch(() => null);
+        return;
+      }
+      const member = await guild.members.fetch(user.id).catch(() => null);
+      const voiceChannel = member && member.voice ? member.voice.channel : null;
+      if (!voiceChannel) { await interaction.followUp({ content: '❌ Зайдите в голосовой канал, чтобы включить радио.', ephemeral: true }).catch(() => null); return; }
+      await interaction.followUp({ content: `🔁 Включаю ${station.label}...`, ephemeral: true }).catch(() => null);
+      try {
+        await musicPlayer.playNow(guild, voiceChannel, station.url, interaction.channel);
+        await interaction.followUp({ content: `▶️ Радиостанция ${station.label} запущена.`, ephemeral: true }).catch(() => null);
+      } catch (e) {
+        console.error('radio play error', e && e.message);
+        await interaction.followUp({ content: '❌ Ошибка при запуске радиостанции.', ephemeral: true }).catch(() => null);
+      }
+      return;
     }
 
     // Vote handlers

@@ -1,0 +1,6 @@
+[
+  { "id": "radioparadise", "label": "Radio Paradise (MP3 128)", "url": "https://stream.radioparadise.com/mp3-128" },
+  { "id": "groovesalad", "label": "SomaFM - Groove Salad", "url": "https://ice.somafm.com/groovesalad-128-mp3" },
+  { "id": "lush", "label": "SomaFM - Lush", "url": "https://ice.somafm.com/lush-128-mp3" },
+  { "id": "record", "label": "Record FM (пример)", "url": "http://ic7.101.ru:8000/stream" }
+]

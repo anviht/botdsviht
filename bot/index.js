@@ -78,6 +78,7 @@ if (fs.existsSync(commandsPath)) {
 
 const db = require('./libs/db');
 const { sendPrompt } = require('./ai/vihtAi');
+const musicPlayer = require('./music/player2');
 
 // optional helpers
 let handleReactionAdd = null;
@@ -106,7 +107,7 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.isButton()) {
       // Dashboard-admin panel buttons
-      if (handlePanelButton && (interaction.customId.includes('cabinet') || interaction.customId.includes('government') || interaction.customId.includes('shop') || interaction.customId.includes('back_') || interaction.customId.includes('gov_') || interaction.customId.includes('vote'))) {
+      if (handlePanelButton && (interaction.customId.includes('cabinet') || interaction.customId.includes('government') || interaction.customId.includes('shop') || interaction.customId.includes('back_') || interaction.customId.includes('gov_') || interaction.customId.includes('vote') || interaction.customId.includes('music') || interaction.customId.startsWith('radio_'))) {
         try { await handlePanelButton(interaction); } catch (err) { console.error('Panel button error', err); await safeReply(interaction, { content: 'Ошибка при обработке кнопки.', ephemeral: true }); }
         return;
       }
@@ -190,6 +191,32 @@ client.on('interactionCreate', async (interaction) => {
           all.push(ticket); await db.set('tickets', all);
           return await safeReply(interaction, { content: `Обращение создано. ${thread ? `Тред: <#${thread.id}>` : 'Сделано в канале.'}`, ephemeral: true });
         } catch (e) { console.error('modal submit error', e); return await safeReply(interaction, { content: 'Ошибка при создании обращения.', ephemeral: true }); }
+      }
+      // Music modal: play now
+      if (interaction.customId === 'music_modal') {
+        try {
+          const query = interaction.fields.getTextInputValue('music_query').slice(0, 400);
+          const guild = interaction.guild;
+          const member = interaction.member || (guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null);
+          const voiceChannel = member && member.voice ? member.voice.channel : null;
+          if (!voiceChannel) return await safeReply(interaction, { content: 'Вы не в голосовом канале.', ephemeral: true });
+          await safeReply(interaction, { content: '🔎 Ищу и начинаю воспроизведение...', ephemeral: true });
+          await musicPlayer.playNow(guild, voiceChannel, query, interaction.channel).catch(async (e) => { console.error('playNow error', e); await safeReply(interaction, { content: 'Ошибка при воспроизведении трека.', ephemeral: true }); });
+          return;
+        } catch (e) { console.error('music_modal submit error', e); return await safeReply(interaction, { content: 'Ошибка при обработке формы музыки.', ephemeral: true }); }
+      }
+
+      // Music modal: add to queue
+      if (interaction.customId === 'music_modal_queue') {
+        try {
+          const query = interaction.fields.getTextInputValue('music_query').slice(0, 400);
+          const guild = interaction.guild;
+          await safeReply(interaction, { content: 'Добавляю в очередь...', ephemeral: true });
+          const ok = await musicPlayer.addToQueue(guild, query);
+          if (ok) await safeReply(interaction, { content: 'Добавлено в очередь ✅', ephemeral: true });
+          else await safeReply(interaction, { content: 'Не удалось добавить в очередь.', ephemeral: true });
+          return;
+        } catch (e) { console.error('music_modal_queue submit error', e); return await safeReply(interaction, { content: 'Ошибка при добавлении в очередь.', ephemeral: true }); }
       }
     }
   } catch (err) { console.error('interactionCreate handler error', err); }
@@ -457,5 +484,23 @@ process.on('uncaughtException', (err) => {
   try { console.error('Uncaught Exception:', err && err.stack ? err.stack : err); } catch (e) { console.error('Uncaught Exception', err); }
   // do not exit — keep process alive; consider reporting/alerting
 });
+
+// Graceful shutdown handlers
+async function gracefulShutdown(signal) {
+  try {
+    console.log(`[Shutdown] Received ${signal}, logging out client and exiting`);
+    if (client && client.user) {
+      try { await client.destroy(); } catch (e) { console.warn('Error destroying client', e && e.message); }
+    }
+    // allow other cleanup (DB flush) if needed
+    process.exit(0);
+  } catch (e) {
+    console.error('Error during gracefulShutdown', e && e.message ? e.message : e);
+    process.exit(1);
+  }
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 client.login(token);
