@@ -51,17 +51,18 @@ async function findYouTubeUrl(query) {
   if (!query) return null;
   if (/^https?:\/\//i.test(query)) return query;
   try {
-    // Try direct search
+    // Try direct search and collect candidates
     let r = await yts(query);
-    let vid = r && r.videos && r.videos.length ? r.videos.find(v => !v.live && v.seconds > 0) : null;
+    let vids = r && r.videos && r.videos.length ? r.videos.filter(v => !v.live && v.seconds > 0) : [];
     // Try adding 'audio' keyword if nothing found
-    if (!vid) {
+    if (!vids.length) {
       r = await yts(`${query} audio`);
-      vid = r && r.videos && r.videos.length ? r.videos.find(v => !v.live && v.seconds > 0) : null;
+      vids = r && r.videos && r.videos.length ? r.videos.filter(v => !v.live && v.seconds > 0) : [];
     }
-    // Fallback to first video if still nothing
-    if (!vid && r && r.videos && r.videos.length) vid = r.videos[0];
-    return vid ? vid.url : null;
+    // Fallback to any video results if still empty
+    if (!vids.length && r && r.videos && r.videos.length) vids = r.videos;
+    const candidates = vids.map(v => ({ url: v.url, title: v.title }));
+    return candidates.length ? { candidates } : null;
   } catch (e) {
     console.warn('findYouTubeUrl failed', e && e.message);
     return null;
@@ -97,17 +98,40 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
 
     let resource = null;
     if (isYouTubeUrl(url)) {
+      // If findYouTubeUrl returned candidates object, try them sequentially
+      const attempted = [];
       try {
-        // try high quality first, fallback to lower quality if it fails
-        let stream = null;
-        try { stream = ytdl(url, { filter: 'audioonly', quality: 'highestaudio', highWaterMark: 1 << 25 }); } catch (e) { stream = null; }
-        if (!stream) {
-          try { stream = ytdl(url, { filter: 'audioonly', quality: 'lowestaudio', highWaterMark: 1 << 25 }); } catch (e) { stream = null; }
+        // If callers passed an object with candidates, iterate; otherwise use the single url
+        const candidates = (typeof url === 'string') ? [{ url }] : (url.candidates || []);
+        let lastErr = null;
+        for (const c of candidates) {
+          const candidateUrl = c.url || c;
+          attempted.push(candidateUrl);
+          try {
+            // verify info first
+            await ytdl.getInfo(candidateUrl);
+            // try high quality then low quality
+            let stream = null;
+            try { stream = ytdl(candidateUrl, { filter: 'audioonly', quality: 'highestaudio', highWaterMark: 1 << 25 }); } catch (e) { stream = null; }
+            if (!stream) {
+              try { stream = ytdl(candidateUrl, { filter: 'audioonly', quality: 'lowestaudio', highWaterMark: 1 << 25 }); } catch (e) { stream = null; }
+            }
+            if (!stream) throw new Error('ytdl failed to create stream');
+            resource = createAudioResource(stream, { inlineVolume: true });
+            // success
+            url = candidateUrl;
+            break;
+          } catch (err) {
+            lastErr = err;
+            console.warn('ytdl candidate failed', candidateUrl, err && err.message);
+            continue;
+          }
         }
-        if (!stream) throw new Error('ytdl failed to create stream');
-        resource = createAudioResource(stream, { inlineVolume: true });
+        if (!resource) {
+          throw lastErr || new Error('No ytdl candidate succeeded');
+        }
       } catch (e) {
-        console.error('ytdl stream error', e && e.message);
+        console.error('ytdl stream error', e && e.stack ? e.stack : e && e.message ? e.message : e);
         if (textChannel && textChannel.send) await textChannel.send('❌ Ошибка при получении аудиопотока с YouTube. Попробуйте другой запрос или ссылку.');
         return false;
       }
