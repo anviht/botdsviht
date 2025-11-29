@@ -54,35 +54,6 @@ async function handlePanelButton(interaction) {
       const member = await guild.members.fetch(user.id).catch(() => null);
       const embed = userCabinetEmbeds.createUserInfoEmbed(member);
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cabinet_commands').setLabel('📋 Команды').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('cabinet_balance').setLabel('💰 Баланс').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('cabinet_status').setLabel('📊 Мой статус').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
-      );
-      await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
-    }
-
-    if (customId === 'cabinet_commands') {
-      const embed = userCabinetEmbeds.createCommandsEmbed();
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
-      );
-      await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
-    }
-
-    if (customId === 'cabinet_balance') {
-      const embed = userCabinetEmbeds.createBalanceEmbed(user);
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
-      );
-      await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
-    }
-
-    if (customId === 'cabinet_status') {
-      const member = await guild.members.fetch(user.id).catch(() => null);
-      const presidentData = await presidentModel.getCurrentPresident(guild);
-      const embed = userCabinetEmbeds.createUserStatusEmbed(member, presidentData);
-      const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('back_main').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
       await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
