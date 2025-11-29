@@ -93,11 +93,11 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
       return false;
     }
 
-    let connection = getVoiceConnection(guild.id);
-    if (!connection) {
-      connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: voiceChannel.guild.voiceAdapterCreator });
-      state.connection = connection;
-    }
+      let connection = getVoiceConnection(guild.id);
+      if (!connection) {
+        connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+        state.connection = connection;
+      }
 
     let resource = null;
     if (isYouTubeUrl(url)) {
