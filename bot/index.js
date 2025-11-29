@@ -424,6 +424,50 @@ client.once('ready', async () => {
       else { const msg = await supportChannel.send({ embeds: [embed], components: [row] }).catch(() => null); if (msg && db && db.set) await db.set('supportPanelPosted', { channelId: SUPPORT_CHANNEL_ID, messageId: msg.id, postedAt: Date.now() }); console.log('Reposted support panel to', SUPPORT_CHANNEL_ID); }
     }
   } catch (e) { console.warn('Failed to post support panel on ready:', e && e.message ? e.message : e); }
+
+  // Post bot management panel with music
+  try {
+    const { createMusicMenuEmbed } = require('./music-interface/musicEmbeds');
+    const CONTROL_PANEL_CHANNEL_ID = '1443194196172476636';
+    const panelCheckKey = 'controlPanelPosted';
+    const controlChannel = await client.channels.fetch(CONTROL_PANEL_CHANNEL_ID).catch(() => null);
+    
+    if (!controlChannel) {
+      console.warn('Control panel channel not found:', CONTROL_PANEL_CHANNEL_ID);
+      return;
+    }
+
+    const panelCheck = db.get(panelCheckKey);
+    const musicEmbed = createMusicMenuEmbed();
+    const controlRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('music_radio').setLabel('📻 Радио').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('music_own').setLabel('🎵 Своя музыка').setStyle(ButtonStyle.Secondary).setDisabled(true),
+      new ButtonBuilder().setCustomId('music_link').setLabel('🔗 Ссылка').setStyle(ButtonStyle.Secondary).setDisabled(true)
+    );
+
+    if (!panelCheck) {
+      // Post new panel
+      const msg = await controlChannel.send({ embeds: [musicEmbed], components: [controlRow] }).catch(() => null);
+      if (msg && db && db.set) {
+        await db.set(panelCheckKey, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: msg.id, postedAt: Date.now() });
+      }
+      console.log('Posted control panel to', CONTROL_PANEL_CHANNEL_ID);
+    } else {
+      // Update existing panel
+      const existing = await controlChannel.messages.fetch(panelCheck.messageId).catch(() => null);
+      if (existing) {
+        await existing.edit({ embeds: [musicEmbed], components: [controlRow] }).catch(() => null);
+        console.log('Updated existing control panel message');
+      } else {
+        // Message was deleted, post new one
+        const msg = await controlChannel.send({ embeds: [musicEmbed], components: [controlRow] }).catch(() => null);
+        if (msg && db && db.set) {
+          await db.set(panelCheckKey, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: msg.id, postedAt: Date.now() });
+        }
+        console.log('Reposted control panel to', CONTROL_PANEL_CHANNEL_ID);
+      }
+    }
+  } catch (e) { console.warn('Failed to post control panel on ready:', e && e.message ? e.message : e); }
 });
 
 // Global safety handlers to avoid process crash on uncaught errors
