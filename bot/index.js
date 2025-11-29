@@ -399,6 +399,24 @@ client.once('ready', async () => {
   await db.ensureReady();
   console.log('DB ready, proceeding with startup status report');
 
+  // Auto-register slash commands if enabled via env
+  try {
+    const autoReg = process.env.AUTO_REGISTER_COMMANDS === 'true' || process.env.AUTO_REGISTER_COMMANDS === '1';
+    if (autoReg) {
+      try {
+        const registerCommands = require('./commands/register-commands');
+        if (typeof registerCommands === 'function') {
+          await registerCommands();
+          console.log('Auto command registration completed.');
+        } else {
+          console.warn('register-commands did not export a function; skipping auto registration');
+        }
+      } catch (err) {
+        console.warn('Auto command registration failed:', err && err.message ? err.message : err);
+      }
+    }
+  } catch (e) { /* ignore */ }
+
   // Helper: format date/time in dd.mm.yyyy hh.mm (MSK)
   function formatDateTimeMSK(ms) {
     const d = new Date(ms);

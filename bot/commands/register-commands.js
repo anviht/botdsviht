@@ -2,19 +2,25 @@ const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v10');
 const fs = require('fs');
 const path = require('path');
-const { clientId, guildId, token } = require('../config');
+const config = require('../config');
 
-const commands = [];
-const commandsPath = path.join(__dirname);
-const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js') && f !== 'register-commands.js');
+async function registerCommands() {
+  const { clientId, guildId, token } = config;
+  if (!token) return console.error('DISCORD_TOKEN not set in env; skipping command registration');
 
-for (const file of commandFiles) {
-  const command = require(path.join(commandsPath, file));
-  if (command.data) commands.push(command.data.toJSON());
-}
+  const commands = [];
+  const commandsPath = path.join(__dirname);
+  const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js') && f !== 'register-commands.js');
 
-(async () => {
-  if (!token) return console.error('DISCORD_TOKEN not set in env');
+  for (const file of commandFiles) {
+    try {
+      const command = require(path.join(commandsPath, file));
+      if (command.data) commands.push(command.data.toJSON());
+    } catch (e) {
+      console.warn('Failed loading command for registration:', file, e && e.message ? e.message : e);
+    }
+  }
+
   const rest = new REST({ version: '10' }).setToken(token);
   try {
     console.log('Registering commands...');
@@ -28,4 +34,6 @@ for (const file of commandFiles) {
   } catch (err) {
     console.error('Failed to register commands', err);
   }
-})();
+}
+
+module.exports = registerCommands;
