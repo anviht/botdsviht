@@ -84,6 +84,22 @@ async function streamFromUrl(url) {
   } catch (e) { console.warn('streamFromUrl failed', e && e.message); return null; }
 }
 
+async function getStreamFromYtDlp(url) {
+  return new Promise((resolve) => {
+    const cmd = `yt-dlp -f best -g "${url.replace(/"/g, '\\"')}" 2>/dev/null`;
+    exec(cmd, { timeout: 30000, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+      if (err || !stdout) {
+        console.warn('yt-dlp --get-url failed:', err && err.message);
+        resolve(null);
+      } else {
+        const lines = stdout.trim().split('\n');
+        const directUrl = lines[lines.length - 1];
+        resolve(directUrl || null);
+      }
+    });
+  });
+}
+
 async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
   try {
     const state = ensureState(guild.id);
@@ -129,8 +145,27 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
         attempted.push(candidateUrl);
         const detail = { candidate: candidateUrl, attempts: [] };
 
-        // 1) try play-dl FIRST (more reliable for YouTube)
-        if (playdl) {
+        // 1) Try yt-dlp FIRST (most reliable)
+        try {
+          const directUrl = await getStreamFromYtDlp(candidateUrl);
+          if (directUrl) {
+            const stream = await streamFromUrl(directUrl);
+            if (stream) {
+              resource = createAudioResource(stream, { inlineVolume: true });
+              resolvedUrl = candidateUrl;
+              detail.attempts.push({ method: 'yt-dlp', ok: true });
+              attemptDetails.push(detail);
+              break;
+            } else {
+              detail.attempts.push({ method: 'yt-dlp', ok: false, error: 'no stream from direct URL' });
+            }
+          } else {
+            detail.attempts.push({ method: 'yt-dlp', ok: false, error: 'no direct URL' });
+          }
+        } catch (e) { detail.attempts.push({ method: 'yt-dlp', ok: false, error: String(e && e.message || e) }); console.warn('yt-dlp failed for candidate', candidateUrl, e && e.message); lastErr = e; }
+
+        // 2) try play-dl fallback
+        if (!resource && playdl) {
           try {
             const pl = await playdl.stream(candidateUrl).catch(() => null);
             if (pl && pl.stream) {
@@ -143,11 +178,11 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
               detail.attempts.push({ method: 'play-dl', ok: false, error: 'no stream' });
             }
           } catch (e) { detail.attempts.push({ method: 'play-dl', ok: false, error: String(e && e.message || e) }); console.warn('play-dl failed for candidate', candidateUrl, e && e.message); lastErr = e; }
-        } else {
+        } else if (!resource) {
           detail.attempts.push({ method: 'play-dl', ok: false, error: 'play-dl not installed' });
         }
 
-        // 2) try ytdl-core fallback
+        // 3) try ytdl-core fallback
         if (!resource) {
           try {
             await ytdl.getInfo(candidateUrl);

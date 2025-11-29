@@ -1,6 +1,11 @@
 # Use Node 20 (required by some deps like undici)
 FROM node:20-alpine
 
+# Install yt-dlp binary and ffmpeg for audio extraction
+RUN apk add --no-cache wget ca-certificates ffmpeg && \
+    wget -q https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -O /usr/local/bin/yt-dlp && \
+    chmod +x /usr/local/bin/yt-dlp
+
 # Create app directory
 WORKDIR /usr/src/app
 
