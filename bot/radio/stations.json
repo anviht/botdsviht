@@ -1,0 +1,42 @@
+[
+  {
+    "id": "radio1",
+    "name": "🎵 Хит ФМ",
+    "url": "https://hitfm.cdnvideo.ru:8080/hitfm_main"
+  },
+  {
+    "id": "radio2",
+    "name": "📻 Авторадио",
+    "url": "https://avtoradio.cdnvideo.ru:8443/autoradio_high"
+  },
+  {
+    "id": "radio3",
+    "name": "🎶 DFM",
+    "url": "https://dfm.cdnvideo.ru:8080/dfm_main"
+  },
+  {
+    "id": "radio4",
+    "name": "🎼 Русское Радио",
+    "url": "https://rusradio.cdnvideo.ru:8080/rusradio_main"
+  },
+  {
+    "id": "radio5",
+    "name": "🔊 Europa+",
+    "url": "https://europaplus.cdnvideo.ru:8080/europaplus_main"
+  },
+  {
+    "id": "radio6",
+    "name": "🌊 Radio Skype",
+    "url": "https://stream.rcast.net/radioskype"
+  },
+  {
+    "id": "radio7",
+    "name": "🎤 Орфей",
+    "url": "https://orfej.cdnvideo.ru:8080/orfey_main"
+  },
+  {
+    "id": "radio8",
+    "name": "📡 SHAKAzhan",
+    "url": "https://shakazhan.cdnvideo.ru:8080/SHAKAzhan_main"
+  }
+]

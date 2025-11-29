@@ -85,6 +85,7 @@ if (fs.existsSync(commandsPath)) {
 const db = require('./libs/db');
 const { sendPrompt } = require('./ai/vihtAi');
 const musicPlayer = require('./music/player2');
+const { handleMusicButton } = require('./radio/musicHandler');
 
 // optional helpers
 let handleReactionAdd = null;
@@ -152,6 +153,12 @@ client.on('interactionCreate', async (interaction) => {
         }
         await db.set('tickets', tickets);
         await safeReply(interaction, { content: `Готово — закрыто обращений: ${closedCount}`, ephemeral: true });
+      }
+
+      // Music/Radio buttons
+      if (interaction.customId.startsWith('music_') || interaction.customId.startsWith('radio_')) {
+        try { await handleMusicButton(interaction); } catch (err) { console.error('Music button error', err); await safeReply(interaction, { content: 'Ошибка при обработке кнопки музыки.', ephemeral: true }); }
+        return;
       }
 
       return;

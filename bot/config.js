@@ -5,7 +5,6 @@ const config = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.CLIENT_ID,
   guildId: process.env.GUILD_ID,
-  dashboardPort: process.env.PORT || 3001,
   welcomeChannelId: process.env.WELCOME_CHANNEL_ID || null,
   aiChatChannelId: process.env.AI_CHAT_CHANNEL_ID || '1437189999882801173',
   announceChannelId: process.env.ANNOUNCE_CHANNEL_ID || '1436487981723680930',
