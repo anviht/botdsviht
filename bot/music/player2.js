@@ -95,14 +95,8 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
 
       let connection = getVoiceConnection(guild.id);
       if (!connection) {
-        try {
-          connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: voiceChannel.guild.voiceAdapterCreator });
-          state.connection = connection;
-        } catch (e) {
-          console.error('Failed to join voice channel', e && e.message ? e.message : e);
-          if (textChannel && textChannel.send) await textChannel.send('❌ Не удалось подключиться к голосовому каналу. Проверьте права бота (Connect/Speak).');
-          return false;
-        }
+        connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+        state.connection = connection;
       }
 
     let resource = null;
@@ -128,26 +122,13 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
 
     if (candidates.length > 0) {
       const attempted = [];
+      const attemptDetails = [];
       let lastErr = null;
-      // announce attempt
-      try { if (textChannel && textChannel.send) await textChannel.send(`🔎 Ищу поток для: ${queryOrUrl}`); } catch (e) {}
-      // iterate candidates sequentially; prefer play-dl first, then ytdl, then yt-dlp
+      // iterate candidates sequentially
       for (const candidateUrl of candidates) {
         attempted.push(candidateUrl);
-
-        // 1) try play-dl first (if available)
-        if (playdl) {
-          try {
-            const pl = await playdl.stream(candidateUrl).catch(() => null);
-            if (pl && pl.stream) {
-              resource = createAudioResource(pl.stream, { inlineVolume: true });
-              resolvedUrl = candidateUrl;
-              break;
-            }
-          } catch (e) { console.warn('play-dl failed for candidate', candidateUrl, e && e.message); lastErr = e; }
-        }
-
-        // 2) try ytdl
+        const detail = { candidate: candidateUrl, attempts: [] };
+        // 1) try ytdl
         try {
           await ytdl.getInfo(candidateUrl);
           let stream = null;
@@ -158,34 +139,82 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
           if (stream) {
             resource = createAudioResource(stream, { inlineVolume: true });
             resolvedUrl = candidateUrl;
+            detail.attempts.push({ method: 'ytdl-core', ok: true });
+            attemptDetails.push(detail);
             break;
+          } else {
+            detail.attempts.push({ method: 'ytdl-core', ok: false, error: 'no stream' });
           }
-        } catch (e) { lastErr = e; console.warn('ytdl failed for candidate', candidateUrl, e && e.message); }
+        } catch (e) {
+          lastErr = e;
+          detail.attempts.push({ method: 'ytdl-core', ok: false, error: String(e && e.message || e) });
+          console.warn('ytdl failed for candidate', candidateUrl, e && e.message);
+        }
+
+        // 2) try play-dl fallback
+        if (!resource && playdl) {
+          try {
+            const pl = await playdl.stream(candidateUrl).catch(() => null);
+            if (pl && pl.stream) {
+              resource = createAudioResource(pl.stream, { inlineVolume: true });
+              resolvedUrl = candidateUrl;
+              detail.attempts.push({ method: 'play-dl', ok: true });
+              attemptDetails.push(detail);
+              break;
+            } else {
+              detail.attempts.push({ method: 'play-dl', ok: false, error: 'no stream' });
+            }
+          } catch (e) { detail.attempts.push({ method: 'play-dl', ok: false, error: String(e && e.message || e) }); console.warn('play-dl failed for candidate', candidateUrl, e && e.message); }
+        } else if (!playdl) {
+          detail.attempts.push({ method: 'play-dl', ok: false, error: 'play-dl not installed' });
+        }
 
         // 3) try yt-dlp via npx to get direct audio URL
-        try {
-          const cmd = `npx -y yt-dlp -f bestaudio -g ${JSON.stringify(candidateUrl)}`;
-          const direct = await new Promise((resolve, reject) => {
-            exec(cmd, { timeout: 20000, windowsHide: true }, (err, stdout, stderr) => {
-              if (err) return reject(err);
-              const out = (stdout || '').trim().split(/\r?\n/)[0];
-              resolve(out || null);
+        if (!resource) {
+          try {
+            const cmd = `npx -y yt-dlp -f bestaudio -g ${JSON.stringify(candidateUrl)}`;
+            const direct = await new Promise((resolve, reject) => {
+              exec(cmd, { timeout: 20000, windowsHide: true }, (err, stdout, stderr) => {
+                if (err) return reject({ err, stderr: String(stderr || '') });
+                const out = (stdout || '').trim().split(/\r?\n/)[0];
+                resolve(out || null);
+              });
+            }).catch(e => {
+              detail.attempts.push({ method: 'yt-dlp', ok: false, error: e && e.err ? String(e.err.message || e.err) + ' | stderr: ' + (e.stderr || '') : String(e) });
+              return null;
             });
-          }).catch(e => null);
-          if (direct) {
-            const s = await streamFromUrl(direct);
-            if (s) {
-              resource = createAudioResource(s, { inlineVolume: true });
-              resolvedUrl = candidateUrl;
-              break;
+            if (direct) {
+              const s = await streamFromUrl(direct);
+              if (s) {
+                resource = createAudioResource(s, { inlineVolume: true });
+                resolvedUrl = candidateUrl;
+                detail.attempts.push({ method: 'yt-dlp', ok: true });
+                attemptDetails.push(detail);
+                break;
+              } else {
+                detail.attempts.push({ method: 'yt-dlp', ok: false, error: 'failed to stream direct url' });
+              }
             }
-          }
-        } catch (e) { lastErr = e; console.warn('yt-dlp failed for candidate', candidateUrl, e && e.message); }
+          } catch (e) { detail.attempts.push({ method: 'yt-dlp', ok: false, error: String(e && e.message || e) }); lastErr = e; console.warn('yt-dlp failed for candidate', candidateUrl, e && e.message); }
+        }
+
+        attemptDetails.push(detail);
       }
 
       if (!resource) {
         console.error('All YouTube candidates failed:', attempted, lastErr && (lastErr.stack || lastErr.message || lastErr));
-        if (textChannel && textChannel.send) await textChannel.send(`❌ Ошибка при получении аудиопотока с YouTube. Попытки: ${attempted.join(', ')}`);
+        // Build diagnostics message (truncate long errors)
+        const lines = [];
+        for (const d of attemptDetails) {
+          const parts = d.attempts.map(a => {
+            if (a.ok) return `${a.method}: ok`;
+            const err = String(a.error || '').slice(0, 200);
+            return `${a.method}: err (${err})`;
+          });
+          lines.push(`• ${d.candidate} -> ${parts.join(' | ')}`);
+        }
+        const diag = lines.join('\n').slice(0, 1800);
+        if (textChannel && textChannel.send) await textChannel.send(`❌ Ошибка при получении аудиопотока с YouTube. Попытки: ${attempted.join(', ')}\n\nДетали:\n${diag}`);
         return false;
       }
     }
