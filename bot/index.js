@@ -1,5 +1,45 @@
 const fs = require('fs');
 const path = require('path');
+// Startup safety: prevent running if secrets are accidentally committed in repository files.
+// The bot should read secrets only from `.env`. If a secret-like assignment is found
+// in any repository file (except .env/.env.example), the process will exit with an error.
+try {
+  const IGNORES = ['node_modules', '.git', '.env', '.env.example'];
+  const secretKeys = ['DISCORD_TOKEN', 'GEMINI_API_KEY', 'CLIENT_ID', 'GUILD_ID'];
+  const secretAssignRe = new RegExp(`\\b(?:${secretKeys.join('|')})\\b\\s*=\\s*.+`, 'i');
+
+  function scanDir(dir) {
+    for (const name of fs.readdirSync(dir)) {
+      try {
+        const full = path.join(dir, name);
+        const rel = path.relative(process.cwd(), full);
+        if (IGNORES.some(i => rel === i || rel.startsWith(i + path.sep))) continue;
+        const stat = fs.statSync(full);
+        if (stat.isDirectory()) {
+          scanDir(full);
+        } else if (stat.isFile()) {
+          const txt = fs.readFileSync(full, 'utf8');
+          const lines = txt.split(/\r?\n/);
+          for (let i = 0; i < lines.length; i++) {
+            const ln = lines[i];
+            if (secretAssignRe.test(ln)) {
+              console.error('\n[SECURITY] Secret assignment detected in repository file:', rel);
+              console.error('  Line', i + 1, ':', ln.trim());
+              console.error('\nThe bot will only read secrets from `.env` at runtime.');
+              console.error('Remove the secret from the repository file and keep it only in a server-side `.env`.');
+              process.exit(1);
+            }
+          }
+        }
+      } catch (e) {
+        // ignore unreadable files
+      }
+    }
+  }
+
+  // Only run scan when code is executed from project root
+  try { scanDir(process.cwd()); } catch (e) { /* ignore */ }
+} catch (e) { /* do not crash startup if scanner fails */ }
 const { Client, Collection, GatewayIntentBits, Partials, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelType } = require('discord.js');
 const { token } = require('./config');
 
@@ -418,17 +458,42 @@ client.once('ready', async () => {
     
     if (welcomeChannel) {
       const welcomeRec = db.get('welcome');
-      // Delete old message if it exists
+      // If there is an existing saved message, try to edit it instead of deleting
       if (welcomeRec && welcomeRec.messageId) {
         try {
           const oldMsg = await welcomeChannel.messages.fetch(welcomeRec.messageId).catch(() => null);
-          if (oldMsg) await oldMsg.delete().catch(() => null);
-          console.log('Deleted old welcome message:', welcomeRec.messageId);
-        } catch (e) { /* ignore */ }
+          if (oldMsg) {
+            // Build the same embed as in sendWelcomeMessage and edit existing message
+            const { EmbedBuilder } = require('discord.js');
+            const SUBSCRIBER_ROLE_ID = process.env.SUBSCRIBER_ROLE_ID || '1441744621641400353';
+            const embed = new EmbedBuilder()
+              .setTitle('Добро пожаловать на сервер Viht VPN')
+              .setColor(0x1abc9c)
+              .setDescription('Добро пожаловать! Здесь собирается сообщество вокруг экосистемы Viht: решения по VPN и защите данных, интеграции с AI, разработка сайтов и ботов. Мы ценим конфиденциальность и надёжность.')
+              .addFields(
+                { name: 'О канале', value: 'Здесь вы найдёте обсуждения по VPN, безопасности, интеграциям AI и помощи при создании сайтов и ботов. Мы ценим конфиденциальность и надёжность.' },
+                { name: 'Получить роль', value: `Поставьте реакцию ✅ под этим сообщением, чтобы получить роль <@&${SUBSCRIBER_ROLE_ID}>.\nУберите реакцию ❌, чтобы удалить роль.` }
+              )
+              .setFooter({ text: 'Нажмите ✅ для роли, ❌ для удаления роли.' });
+
+            await oldMsg.edit({ embeds: [embed] }).catch(() => null);
+            try { await oldMsg.react('✅').catch(() => null); } catch (e) {}
+            console.log('Updated existing welcome message:', welcomeRec.messageId);
+          } else {
+            // If message doesn't exist, post a fresh one via helper
+            await sendWelcomeMessage(client, WELCOME_CHANNEL_ID);
+            console.log('Posted new welcome message in', WELCOME_CHANNEL_ID);
+          }
+        } catch (e) {
+          // fallback to helper if editing fails
+          await sendWelcomeMessage(client, WELCOME_CHANNEL_ID).catch(() => null);
+          console.log('Refreshed welcome message in', WELCOME_CHANNEL_ID);
+        }
+      } else {
+        // No saved message — post new welcome message
+        await sendWelcomeMessage(client, WELCOME_CHANNEL_ID);
+        console.log('Posted welcome message in', WELCOME_CHANNEL_ID);
       }
-      // Post new welcome message
-      await sendWelcomeMessage(client, WELCOME_CHANNEL_ID);
-      console.log('Refreshed welcome message in', WELCOME_CHANNEL_ID);
     } else {
       console.warn('Welcome channel not found:', WELCOME_CHANNEL_ID);
     }

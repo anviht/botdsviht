@@ -69,8 +69,12 @@ async function handleMusicButton(interaction) {
         return await interaction.editReply({ content: '❌ Радиостанция не найдена', flags: 64 });
       }
 
-      // Get or create voice channel connection
-      const voiceChannel = member?.voice?.channel;
+      // Get or create voice channel connection — ensure member is fetched so voice state is available
+      let memberRef = member;
+      if ((!memberRef || !memberRef.voice || !memberRef.voice.channel) && guild) {
+        try { memberRef = await guild.members.fetch(user.id).catch(() => null); } catch (e) { memberRef = null; }
+      }
+      const voiceChannel = memberRef?.voice?.channel;
       if (!voiceChannel) {
         return await interaction.editReply({ content: '❌ Ты не подключен к голосовому каналу', flags: 64 });
       }
