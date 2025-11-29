@@ -78,6 +78,10 @@ async function handleMusicButton(interaction) {
       try {
         // Play radio stream
         await musicPlayer.playNow(guild, voiceChannel, radio.url, interaction.channel);
+          // For radio streams, mark as direct URL so it doesn't try YouTube search
+          // Pass radio as special object that player2 recognizes
+          const radioStream = { isDirectStream: true, url: radio.url };
+          await musicPlayer.playRadio(guild, voiceChannel, radioStream, interaction.channel);
         
         // Store active radio info
         activeRadios.set(guild.id, { radio, userId: user.id });

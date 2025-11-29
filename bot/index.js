@@ -86,6 +86,7 @@ const db = require('./libs/db');
 const { sendPrompt } = require('./ai/vihtAi');
 const musicPlayer = require('./music/player2');
 const { handleMusicButton } = require('./music-interface/musicHandler');
+const { handleControlPanelButton } = require('./music-interface/controlPanelHandler');
 
 // optional helpers
 let handleReactionAdd = null;
@@ -156,6 +157,12 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       // Music/Radio buttons
+        // Control panel buttons (cabinet, main menu, etc)
+        if (interaction.customId.includes('cabinet') || interaction.customId.includes('main_menu') || interaction.customId === 'info_btn') {
+          try { await handleControlPanelButton(interaction); } catch (err) { console.error('Control panel button error', err); await safeReply(interaction, { content: 'Ошибка при обработке кнопки.', ephemeral: true }); }
+          return;
+        }
+
       if (interaction.customId.startsWith('music_') || interaction.customId.startsWith('radio_')) {
         try { await handleMusicButton(interaction); } catch (err) { console.error('Music button error', err); await safeReply(interaction, { content: 'Ошибка при обработке кнопки музыки.', ephemeral: true }); }
         return;
@@ -427,7 +434,7 @@ client.once('ready', async () => {
 
   // Post bot management panel with music
   try {
-    const { createMusicMenuEmbed } = require('./music-interface/musicEmbeds');
+      const { createMainControlPanelEmbed, getMainControlRow } = require('./music-interface/controlPanelEmbeds');
     const CONTROL_PANEL_CHANNEL_ID = '1443194196172476636';
     const panelCheckKey = 'controlPanelPosted';
     const controlChannel = await client.channels.fetch(CONTROL_PANEL_CHANNEL_ID).catch(() => null);
@@ -438,12 +445,8 @@ client.once('ready', async () => {
     }
 
     const panelCheck = db.get(panelCheckKey);
-    const musicEmbed = createMusicMenuEmbed();
-    const controlRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('music_radio').setLabel('📻 Радио').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('music_own').setLabel('🎵 Своя музыка').setStyle(ButtonStyle.Secondary).setDisabled(true),
-      new ButtonBuilder().setCustomId('music_link').setLabel('🔗 Ссылка').setStyle(ButtonStyle.Secondary).setDisabled(true)
-    );
+      const mainEmbed = createMainControlPanelEmbed();
+      const controlRow = getMainControlRow();
 
     if (!panelCheck) {
       // Post new panel
@@ -456,11 +459,11 @@ client.once('ready', async () => {
       // Update existing panel
       const existing = await controlChannel.messages.fetch(panelCheck.messageId).catch(() => null);
       if (existing) {
-        await existing.edit({ embeds: [musicEmbed], components: [controlRow] }).catch(() => null);
+          await existing.edit({ embeds: [mainEmbed], components: [controlRow] }).catch(() => null);
         console.log('Updated existing control panel message');
       } else {
         // Message was deleted, post new one
-        const msg = await controlChannel.send({ embeds: [musicEmbed], components: [controlRow] }).catch(() => null);
+          const msg = await controlChannel.send({ embeds: [mainEmbed], components: [controlRow] }).catch(() => null);
         if (msg && db && db.set) {
           await db.set(panelCheckKey, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: msg.id, postedAt: Date.now() });
         }

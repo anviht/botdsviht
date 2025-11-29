@@ -335,4 +335,38 @@ function isPlaying(guild) { const state = players.get(guild.id); return state &&
 
 async function changeVolume(guild, delta) { const state = players.get(guild.id); if (!state) return null; state.volume = Math.max(0.01, Math.min(5.0, (state.volume || 1.0) + delta)); try { await saveQueueForGuild(guild.id); return state.volume; } catch (e) { return state.volume; } }
 
-module.exports = { playNow, addToQueue, stop, skip, isPlaying, changeVolume };
+async function playRadio(guild, voiceChannel, radioStream, textChannel) {
+  try {
+    const state = ensureState(guild.id);
+    const { url } = radioStream;
+    if (!url) {
+      if (textChannel && textChannel.send) await textChannel.send('❌ Неверный URL радиостанции.');
+      return false;
+    }
+    let connection = getVoiceConnection(guild.id);
+    if (!connection) {
+      connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+      state.connection = connection;
+    }
+    const stream = await streamFromUrl(url);
+    if (!stream) {
+      if (textChannel && textChannel.send) await textChannel.send('❌ Не удалось подключиться к радиостанции.');
+      return false;
+    }
+    const resource = createAudioResource(stream, { inlineVolume: true });
+    resource.volume.setVolume(state.volume);
+    state.player.stop();
+    state.player.play(resource);
+    connection.subscribe(state.player);
+    state.playing = true;
+    state.current = { url, title: 'Radio Stream' };
+    state.player.once(AudioPlayerStatus.Idle, async () => {
+      state.playing = false;
+      state.current = null;
+      setTimeout(() => { const conn = getVoiceConnection(guild.id); if (conn) conn.destroy(); state.connection = null; }, 30_000);
+    });
+    return true;
+  } catch (e) { console.error('playRadio error', e && e.message ? e.message : e); if (textChannel && textChannel.send) await textChannel.send('❌ Ошибка при воспроизведении радио.'); return false; }
+}
+
+module.exports = { playNow, playRadio, addToQueue, stop, skip, isPlaying, changeVolume };

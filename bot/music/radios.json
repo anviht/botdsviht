@@ -1,6 +1,9 @@
 [
-  { "id": "radioparadise", "label": "Radio Paradise (MP3 128)", "url": "https://stream.radioparadise.com/mp3-128" },
-  { "id": "groovesalad", "label": "SomaFM - Groove Salad", "url": "https://ice.somafm.com/groovesalad-128-mp3" },
-  { "id": "lush", "label": "SomaFM - Lush", "url": "https://ice.somafm.com/lush-128-mp3" },
-  { "id": "record", "label": "Record FM (пример)", "url": "http://ic7.101.ru:8000/stream" }
+  { "id": "europaplus", "label": "🇷🇺 Европа Плюс", "url": "https://ep256.hostingradio.ru:8443/ep256" },
+  { "id": "recordfm", "label": "🇷🇺 Record FM", "url": "https://streamradio.recordfm.ru:8443/recordfm" },
+  { "id": "nashe", "label": "🇷🇺 Наше Радио", "url": "https://nasheradio.hostingradio.ru:8443/nasheradio_aac" },
+  { "id": "retro", "label": "🇷🇺 Ретро FM", "url": "https://retroradio.hostingradio.ru:8443/retro_aac" },
+  { "id": "love", "label": "❤️ Love Radio", "url": "https://loveradio.hostingradio.ru:8443/loveradio" },
+  { "id": "dfm", "label": "🇷🇺 DFM", "url": "https://dfm.hostingradio.ru:8443/dfm" },
+  { "id": "mtv", "label": "🎵 MTV Hits", "url": "https://mtv.hostingradio.ru:8443/mtv_aac" }
 ]
