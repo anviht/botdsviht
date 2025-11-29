@@ -85,7 +85,7 @@ if (fs.existsSync(commandsPath)) {
 const db = require('./libs/db');
 const { sendPrompt } = require('./ai/vihtAi');
 const musicPlayer = require('./music/player2');
-const { handleMusicButton } = require('./radio/musicHandler');
+const { handleMusicButton } = require('./music-interface/musicHandler');
 
 // optional helpers
 let handleReactionAdd = null;
