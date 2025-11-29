@@ -1,6 +1,6 @@
 {
   "name": "viht-vpn-bot",
-  "version": "0.0038",
+  "version": "0.0039",
   "description": "Discord bot Viht VPN — AI chat + reaction role + dashboard",
   "main": "bot/index.js",
   "scripts": {
