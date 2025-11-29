@@ -1,9 +1,9 @@
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, NoSubscriberBehavior, AudioPlayerStatus, getVoiceConnection } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, NoSubscriberBehavior, AudioPlayerStatus, getVoiceConnection, entersState, VoiceConnectionStatus, StreamType } = require('@discordjs/voice');
 const ytdl = require('ytdl-core');
 const yts = require('yt-search');
 let playdl = null;
 try { playdl = require('play-dl'); } catch (e) { playdl = null; }
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const db = require('../libs/db');
 const { Readable, PassThrough } = require('stream');
 
@@ -191,10 +191,16 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
     }
 
       let connection = getVoiceConnection(guild.id);
-      if (!connection) {
-        connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
-        state.connection = connection;
-      }
+        if (!connection) {
+          connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+          state.connection = connection;
+          try {
+            // Wait for the underlying voice connection to become ready
+            await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+          } catch (e) {
+            console.warn('joinVoiceChannel: connection not ready', e && e.message);
+          }
+        }
 
     let resource = null;
     let resolvedUrl = null;
@@ -400,13 +406,43 @@ async function playRadio(guild, voiceChannel, radioStream, textChannel) {
       connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
       state.connection = connection;
     }
-    const stream = await streamFromUrl(url);
+    let stream = await streamFromUrl(url);
+    if (!stream) {
+      // try fallback with ffmpeg to force decode
+      try {
+        const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
+        const ff = spawn(ffmpegPath, ['-i', url, '-vn', '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        stream = ff.stdout;
+      } catch (e) { stream = null; }
+    }
     if (!stream) {
       if (textChannel && textChannel.send) await textChannel.send('❌ Не удалось подключиться к радиостанции.');
       return false;
     }
-    const resource = createAudioResource(stream, { inlineVolume: true });
-    resource.volume.setVolume(state.volume);
+
+    let resource = null;
+    try {
+      // subscribe before playing to ensure audio is routed
+      connection.subscribe(state.player);
+      resource = createAudioResource(stream, { inlineVolume: true });
+    } catch (e) {
+      // fallback: if raw stream failed, try forcing ffmpeg decode
+      console.warn('createAudioResource failed, trying ffmpeg fallback', e && e.message);
+      try {
+        const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
+        const ff = spawn(ffmpegPath, ['-i', url, '-vn', '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        resource = createAudioResource(ff.stdout, { inputType: StreamType.Raw, inlineVolume: true });
+      } catch (e2) {
+        console.error('playRadio: createAudioResource fallback failed', e2 && e2.message ? e2.message : e2);
+        if (textChannel && textChannel.send) await textChannel.send(`❌ Ошибка при запуске плеера: ${String(e2 && e2.message || e2).slice(0,200)}`);
+        return false;
+      }
+    }
+
+    try {
+      resource.volume.setVolume(state.volume || 1.0);
+    } catch (e) { /* ignore */ }
+
     state.player.stop();
     try {
       state.player.play(resource);
@@ -415,7 +451,6 @@ async function playRadio(guild, voiceChannel, radioStream, textChannel) {
       if (textChannel && textChannel.send) await textChannel.send(`❌ Ошибка при запуске плеера: ${String(e && e.message || e).slice(0,200)}`);
       return false;
     }
-    connection.subscribe(state.player);
     state.playing = true;
     state.current = { url, title: 'Radio Stream' };
     state.player.once(AudioPlayerStatus.Idle, async () => {
