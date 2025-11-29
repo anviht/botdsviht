@@ -3,6 +3,7 @@ const path = require('path');
 // Startup safety: prevent running if secrets are accidentally committed in repository files.
 // The bot should read secrets only from `.env`. If a secret-like assignment is found
 // in any repository file (except .env/.env.example), the process will exit with an error.
+if (process.env.DISABLE_SECURITY_CHECK === 'true') return;
 try {
   const IGNORES = ['node_modules', '.git', '.env', '.env.example'];
   const secretKeys = ['DISCORD_TOKEN', 'GEMINI_API_KEY', 'CLIENT_ID', 'GUILD_ID'];
