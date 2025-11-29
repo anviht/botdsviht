@@ -366,51 +366,7 @@ client.once('ready', async () => {
     const statusChannel = await client.channels.fetch(STATUS_CHANNEL_ID).catch(() => null);
     if (statusChannel) {
       const { date, time } = formatDateTimeMSK(botStartTime);
-      
-      // Message 1: Bot started timestamp
-      await statusChannel.send(`🚀 **Бот запущен:** ${date} ${time} по МСК`).catch(() => null);
-      await new Promise(r => setTimeout(r, 3000));
-
-      // Message 2: System check header
-      await statusChannel.send(`✅ **Проверка систем:**`).catch(() => null);
-      await new Promise(r => setTimeout(r, 3000));
-
-      // Message 3a: AI status
-      const aiKey = process.env.GEMINI_API_KEY;
-      const aiStatus = aiKey ? '🤖 **Viht AI подключен и функционирует**' : '❌ **Viht AI ошибка: ключ не найден**';
-      await statusChannel.send(aiStatus).catch(() => null);
-      await new Promise(r => setTimeout(r, 3000));
-
-      // Message 3b: Commands list (public and admin-only)
-      const allCmds = Array.from(client.commands.values());
-      const adminCmds = allCmds.filter(c => c.adminOnly).map(cmd => `\`${cmd.data.name}\` — ${cmd.data.description || 'Нет описания'}`).join('\n') || 'Нет административных команд';
-      const publicCmds = allCmds.filter(c => !c.adminOnly).map(cmd => `\`${cmd.data.name}\` — ${cmd.data.description || 'Нет описания'}`).join('\n') || 'Нет публичных команд';
-      const commandsMsg = `📋 **Консольные команды в норме:**\n\n**Публичные команды:**\n${publicCmds}\n\n**Команды (только для роль 1436485697392607303):**\n${adminCmds}`;
-      await statusChannel.send(commandsMsg).catch(() => null);
-      await new Promise(r => setTimeout(r, 3000));
-
-      // Message 4: Preparation header
-      await statusChannel.send(`⚙️ **б. Подготовка к постоянной работе:**`).catch(() => null);
-      await new Promise(r => setTimeout(r, 3000));
-
-      // Message 5: GitHub sync + auto-update with live uptime counter
-      const uptimeHours = getUptimeHours();
-      const updateMsg = `✅ **Синхронизация с GitHub Actions установлена**\n⏱️ **Автоматическое обновление включено ${uptimeHours} часов после запуска**`;
-      const sentMsg = await statusChannel.send(updateMsg).catch(() => null);
-
-      // Update uptime counter every hour
-      if (sentMsg) {
-        setInterval(async () => {
-          try {
-            const newUptime = getUptimeHours();
-            const newText = `✅ **Синхронизация с GitHub Actions установлена**\n⏱️ **Автоматическое обновление включено ${newUptime} часов после запуска**`;
-            await sentMsg.edit(newText).catch(() => null);
-          } catch (e) {
-            console.warn('Failed to update uptime counter:', e && e.message);
-          }
-        }, 60 * 60 * 1000); // Update every hour
-      }
-
+      await statusChannel.send(`✅ **Бот запущен:** ${date} ${time} по МСК`).catch(() => null);
       console.log('Startup status report posted to', STATUS_CHANNEL_ID);
     }
   } catch (e) {

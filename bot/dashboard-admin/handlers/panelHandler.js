@@ -20,8 +20,9 @@ async function createMainPanel(client) {
       .setDescription('Привет! Выбери из кнопок что тебе необходимо');
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('music_main').setLabel('🎵 Музыка').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('shop_main').setLabel('💲 Прайс').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId('cabinet_main').setLabel('👤 Личный кабинет').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('music_main').setLabel('🎵 Музыка').setStyle(ButtonStyle.Secondary).setDisabled(true),
+      new ButtonBuilder().setCustomId('shop_main').setLabel('💲 Прайс').setStyle(ButtonStyle.Secondary).setDisabled(true)
     );
 
     const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
@@ -182,8 +183,9 @@ async function handlePanelButton(interaction) {
         .setColor(0x2F3136)
         .setDescription('Привет! Выбери из кнопок что тебе необходимо');
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('music_main').setLabel('🎵 Музыка').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('shop_main').setLabel('💲 Прайс').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('cabinet_main').setLabel('👤 Личный кабинет').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('music_main').setLabel('🎵 Музыка').setStyle(ButtonStyle.Secondary).setDisabled(true),
+        new ButtonBuilder().setCustomId('shop_main').setLabel('💲 Прайс').setStyle(ButtonStyle.Secondary).setDisabled(true)
       );
       await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => null);
     }
@@ -277,8 +279,8 @@ async function handlePanelButton(interaction) {
           .setDescription('Привет! Выбери из кнопок что тебе необходимо');
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('cabinet_main').setLabel('👤 Личный кабинет').setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId('music_main').setLabel('🎵 Музыка').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId('shop_main').setLabel('💲 Прайс').setStyle(ButtonStyle.Secondary)
+          new ButtonBuilder().setCustomId('music_main').setLabel('🎵 Музыка').setStyle(ButtonStyle.Secondary).setDisabled(true),
+          new ButtonBuilder().setCustomId('shop_main').setLabel('💲 Прайс').setStyle(ButtonStyle.Secondary).setDisabled(true)
         );
         await interaction.update({ embeds: [embed], components: [row] }).catch(() => null);
         return;
