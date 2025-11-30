@@ -394,6 +394,9 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
 
     if (resource && resource.volume) resource.volume.setVolume(state.volume || 1.0);
 
+    // Subscribe BEFORE playing - this is critical!
+    connection.subscribe(state.player);
+    
     state.player.stop();
     try {
       state.player.play(resource);
@@ -402,7 +405,6 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
       if (textChannel && textChannel.send) await textChannel.send('❌ Ошибка при запуске плеера.');
       return false;
     }
-    connection.subscribe(state.player);
     state.playing = true;
     
     // Use resolvedUrl for display (it's the actual YouTube URL we used)
@@ -511,13 +513,14 @@ async function playRadio(guild, voiceChannel, radioStream, textChannel) {
         maxBuffer: 10 * 1024 * 1024  // 10MB buffer
       });
 
+      // Subscribe connection immediately - before creating resource
+      connection.subscribe(state.player);
+      console.log('playRadio: Connection subscribed to player');
+
       // Log ffmpeg errors
       ff.stderr.on('data', (data) => {
         console.warn('ffmpeg stderr:', String(data).slice(0, 200));
       });
-
-      // Subscribe connection before creating resource
-      connection.subscribe(state.player);
 
       // Create audio resource from ffmpeg stdout
       resource = createAudioResource(ff.stdout, { inputType: StreamType.Raw, inlineVolume: true });
