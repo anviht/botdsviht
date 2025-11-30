@@ -341,9 +341,30 @@ async function handleMusicButton(interaction) {
       try {
         await musicPlayer.stop(guild);
         activeRadios.delete(guild.id);
-        const embed = new EmbedBuilder().setTitle('⏹️ Музыка остановлена').setColor(0xFF5252).setDescription('Плеер выключен');
-        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_menu').setLabel('← В главное меню').setStyle(ButtonStyle.Primary));
-        try { await interaction.update({ embeds: [embed], components: [row] }); } catch (e) { await interaction.editReply({ embeds: [embed], components: [row] }).catch(()=>{}); }
+        // Clear owner and reset the single control panel back to registration state
+        await _clearMusicOwner(guild.id).catch(()=>{});
+        const registerEmbed = new EmbedBuilder().setTitle('🎵 Управление аудио').setColor(0x2C3E50).setDescription('Нажмите кнопку, чтобы начать пользоваться ботом (первый нажимает — становится владельцем плеера).');
+        const registerRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_register').setLabel('Начать пользоваться').setStyle(ButtonStyle.Primary));
+        // Try to update stored control message
+        try {
+          const panelKey = `musicControl_${guild.id}`;
+          const rec = db.get(panelKey);
+          if (rec && rec.channelId && rec.messageId) {
+            const ch = await interaction.client.channels.fetch(rec.channelId).catch(()=>null);
+            if (ch && ch.messages) {
+              const msg = await ch.messages.fetch(rec.messageId).catch(()=>null);
+              if (msg) {
+                await msg.edit({ embeds: [registerEmbed], components: [registerRow] }).catch(()=>{});
+                // ensure DB record has no owner
+                await db.set(panelKey, { channelId: rec.channelId, messageId: rec.messageId }).catch(()=>{});
+                // Acknowledge interaction by editing the same message if possible
+                try { await interaction.update({ embeds: [registerEmbed], components: [registerRow] }); return; } catch (e) { /* fallback below */ }
+              }
+            }
+          }
+        } catch (e) { /* ignore */ }
+        // Fallback: update the interaction message to show stopped info but also include register button
+        try { await interaction.update({ embeds: [registerEmbed], components: [registerRow] }); } catch (e) { await interaction.editReply({ embeds: [registerEmbed], components: [registerRow] }).catch(()=>{}); }
       } catch (err) {
         await interaction.update({ content: '❌ Ошибка при остановке плеера' }).catch(()=>{});
       }
