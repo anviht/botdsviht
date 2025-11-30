@@ -282,69 +282,13 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
           }
         }
 
-        // 2) Fallback: ytdl-core (with better error handling)
+        // 2) DISABLED: ytdl-core
+        // Reason: YouTube actively blocks it, causes "Could not extract functions" error
+        // Even with error handlers, ytdl-core throws uncaught exceptions during async stream reading
+        // Only play-dl is used now - if it fails, we need a different approach (API, proxy, etc)
         if (!resource) {
-          try {
-            console.log('Attempting ytdl-core for', candidateUrl.substring(0, 80));
-            
-            // Try to get basic info first
-            let info = null;
-            try {
-              info = await ytdl.getInfo(candidateUrl);
-            } catch (e) {
-              console.warn('ytdl.getInfo failed:', String(e && e.message || e).slice(0, 120));
-              // If getInfo fails, try without it - some videos might still stream
-              info = null;
-            }
-            
-            // Try different quality options
-            const qualityOptions = [
-              { filter: 'audioonly', quality: 'highestaudio' },
-              { filter: 'audioonly', quality: 'lowestaudio' },
-              { filter: 'audio' }
-            ];
-            
-            let stream = null;
-            for (const opts of qualityOptions) {
-              try {
-                stream = ytdl(candidateUrl, { ...opts, highWaterMark: 1 << 25 });
-                if (stream) {
-                  console.log(`ytdl-core got stream with filter=${opts.filter} quality=${opts.quality}`);
-                  break;
-                }
-              } catch (e) {
-                console.warn(`ytdl-core filter=${opts.filter} failed:`, String(e && e.message || e).slice(0, 80));
-                continue;
-              }
-            }
-            
-            if (stream) {
-              try {
-                // Attach error handler to stream before creating resource
-                stream.on('error', (err) => {
-                  console.warn('ytdl stream error event:', String(err && err.message || err).slice(0, 100));
-                });
-                
-                resource = createAudioResource(stream, { inlineVolume: true });
-                resolvedUrl = candidateUrl;
-                detail.attempts.push({ method: 'ytdl-core', ok: true });
-                attemptDetails.push(detail);
-                console.log('✅ ytdl-core SUCCESS for', candidateUrl.substring(0, 80));
-                break;
-              } catch (e) {
-                console.warn('ytdl-core createAudioResource failed:', String(e && e.message || e).slice(0, 100));
-                stream = null;
-                // Fall through to next quality option
-              }
-            } else {
-              console.warn('ytdl-core: all quality options failed for', candidateUrl.substring(0, 80));
-              detail.attempts.push({ method: 'ytdl-core', ok: false, error: 'all quality options failed' });
-            }
-          } catch (e) {
-            const errMsg = String(e && e.message || e).slice(0, 100);
-            detail.attempts.push({ method: 'ytdl-core', ok: false, error: errMsg });
-            console.warn('ytdl-core outer catch:', candidateUrl.substring(0, 80), errMsg);
-          }
+          // Do not attempt ytdl-core - it will crash the bot
+          detail.attempts.push({ method: 'ytdl-core', ok: false, error: 'disabled - YouTube blocks it' });
         }
 
         if (!resource) {

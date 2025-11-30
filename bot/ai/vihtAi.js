@@ -90,13 +90,13 @@ async function sendPrompt(prompt, opts = {}) {
   // Build conversation with history - STRICT VALIDATION
   const contents = [];
   
-  // Add history messages
+  // Add history messages - convert 'assistant' role to 'model' for Gemini API
   for (const h of userHistory) {
     if (h && h.role && h.content) {
       const content = String(h.content || '').slice(0, 4000).trim();
       if (content.length > 0) {
         contents.push({
-          role: h.role,
+          role: h.role === 'assistant' ? 'model' : h.role,  // Gemini uses 'model' not 'assistant'
           parts: [{ text: content }]
         });
       }
