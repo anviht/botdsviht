@@ -250,7 +250,14 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
         if (!resource && playdl) {
           try {
             console.log('Attempting play-dl for', candidateUrl.substring(0, 80));
-            const pl = await playdl.stream(candidateUrl).catch(() => null);
+            let pl = null;
+            try {
+              pl = await playdl.stream(candidateUrl);
+            } catch (e) {
+              console.warn('play-dl.stream() threw:', String(e && e.message || e).slice(0, 150));
+              pl = null;
+            }
+            
             if (pl && pl.stream) {
               resource = createAudioResource(pl.stream, { inlineVolume: true });
               resolvedUrl = candidateUrl;
@@ -259,23 +266,75 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
               console.log('✅ play-dl SUCCESS for', candidateUrl.substring(0, 80));
               break;
             } else {
+              console.warn('play-dl returned no stream for', candidateUrl.substring(0, 80), 'pl=', pl ? 'object' : 'null');
               detail.attempts.push({ method: 'play-dl', ok: false, error: 'no stream returned' });
             }
           } catch (e) { 
             const errMsg = String(e && e.message || e).slice(0, 100);
             detail.attempts.push({ method: 'play-dl', ok: false, error: errMsg }); 
-            console.warn('play-dl failed for', candidateUrl.substring(0, 80), errMsg); 
+            console.warn('play-dl catch block:', candidateUrl.substring(0, 80), errMsg); 
             lastErr = e; 
           }
         } else if (!resource) {
-          detail.attempts.push({ method: 'play-dl', ok: false, error: 'play-dl not installed' });
+          if (!playdl) {
+            console.warn('play-dl is not available');
+            detail.attempts.push({ method: 'play-dl', ok: false, error: 'play-dl not installed' });
+          }
         }
 
-        // 2) yt-dlp is DISABLED (YouTube actively blocks it)
-        // Skip yt-dlp entirely
-
-        // 3) ytdl-core is DISABLED as primary (YouTube blocks it)
-        // Skip ytdl-core as it's also blocked
+        // 2) Fallback: ytdl-core (with better error handling)
+        if (!resource) {
+          try {
+            console.log('Attempting ytdl-core for', candidateUrl.substring(0, 80));
+            
+            // Try to get basic info first
+            let info = null;
+            try {
+              info = await ytdl.getInfo(candidateUrl);
+            } catch (e) {
+              console.warn('ytdl.getInfo failed:', String(e && e.message || e).slice(0, 120));
+              // If getInfo fails, try without it - some videos might still stream
+              info = null;
+            }
+            
+            // Try different quality options
+            const qualityOptions = [
+              { filter: 'audioonly', quality: 'highestaudio' },
+              { filter: 'audioonly', quality: 'lowestaudio' },
+              { filter: 'audio' }
+            ];
+            
+            let stream = null;
+            for (const opts of qualityOptions) {
+              try {
+                stream = ytdl(candidateUrl, { ...opts, highWaterMark: 1 << 25 });
+                if (stream) {
+                  console.log(`ytdl-core got stream with filter=${opts.filter} quality=${opts.quality}`);
+                  break;
+                }
+              } catch (e) {
+                console.warn(`ytdl-core filter=${opts.filter} failed:`, String(e && e.message || e).slice(0, 80));
+                continue;
+              }
+            }
+            
+            if (stream) {
+              resource = createAudioResource(stream, { inlineVolume: true });
+              resolvedUrl = candidateUrl;
+              detail.attempts.push({ method: 'ytdl-core', ok: true });
+              attemptDetails.push(detail);
+              console.log('✅ ytdl-core SUCCESS for', candidateUrl.substring(0, 80));
+              break;
+            } else {
+              console.warn('ytdl-core: all quality options failed for', candidateUrl.substring(0, 80));
+              detail.attempts.push({ method: 'ytdl-core', ok: false, error: 'all quality options failed' });
+            }
+          } catch (e) {
+            const errMsg = String(e && e.message || e).slice(0, 100);
+            detail.attempts.push({ method: 'ytdl-core', ok: false, error: errMsg });
+            console.warn('ytdl-core outer catch:', candidateUrl.substring(0, 80), errMsg);
+          }
+        }
 
         if (!resource) {
           attemptDetails.push(detail);
