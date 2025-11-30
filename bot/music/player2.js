@@ -229,13 +229,13 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
       console.log('playNow: Using existing voice connection for guild', guild.id);
     }
     
-    // Subscribe immediately after ensuring connection is ready
-    if (!connection.subscriptions.some(s => s === state.player)) {
-      connection.subscribe(state.player);
-      console.log('playNow: Connection subscribed to player, guild', guild.id);
-    } else {
-      console.log('playNow: Player already subscribed to connection, guild', guild.id);
-    }
+      // Subscribe immediately after ensuring connection is ready
+      try {
+        connection.subscribe(state.player);
+        console.log('playNow: Connection subscribed to player, guild', guild.id);
+      } catch (e) {
+        console.warn('playNow: subscribe failed', e && e.message);
+      }
 
     let resource = null;
     let resolvedUrl = null;
@@ -532,12 +532,12 @@ async function playRadio(guild, voiceChannel, radioStream, textChannel) {
       console.log('playRadio: Using existing voice connection');
     }
 
-    // Subscribe IMMEDIATELY after ensuring connection is ready
-    if (!connection.subscriptions.some(s => s === state.player)) {
+    // Subscribe immediately after ensuring connection is ready
+    try {
       connection.subscribe(state.player);
       console.log('playRadio: Connection subscribed to player');
-    } else {
-      console.log('playRadio: Player already subscribed');
+    } catch (e) {
+      console.warn('playRadio: subscribe failed', e && e.message);
     }
 
     // Always use ffmpeg for radio to ensure proper codec and stability
