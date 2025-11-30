@@ -127,7 +127,18 @@ async function updateControlMessageWithError(guildId, client, content) {
       try {
         const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
         const embed = new EmbedBuilder().setTitle(content).setColor(0xFF5252);
-        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger));
+        // If there's an owner, show owner controls; otherwise show the register button so users can claim the player
+        let row;
+        if (panelRec && panelRec.owner) {
+          row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('music_release').setLabel('Остановить бота').setStyle(ButtonStyle.Danger)
+          );
+        } else {
+          row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary)
+          );
+        }
         const posted = await ch.send({ embeds: [embed], components: [row] }).catch(() => null);
         if (posted) {
           // preserve existing owner if present
@@ -144,7 +155,18 @@ async function updateControlMessageWithError(guildId, client, content) {
     
     const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
     const embed = new EmbedBuilder().setTitle(content).setColor(0xFF5252);
-    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger));
+    // Choose appropriate controls depending on whether an owner is set
+    let row;
+    if (panelRec && panelRec.owner) {
+      row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('music_release').setLabel('Остановить бота').setStyle(ButtonStyle.Danger)
+      );
+    } else {
+      row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary)
+      );
+    }
     
     await msg.edit({ embeds: [embed], components: [row] });
     return true;

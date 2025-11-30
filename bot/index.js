@@ -224,7 +224,31 @@ client.on('interactionCreate', async (interaction) => {
 
           const updatePanel = async (payload) => {
             if (controlMsg && controlMsg.edit) {
-              try { await controlMsg.edit(payload); return true; } catch (e) { console.error('panel edit failed', e); }
+              try {
+                const toEdit = Object.assign({}, payload);
+                // If caller intentionally passed an empty components array, preserve existing components
+                if (Array.isArray(payload.components) && payload.components.length === 0) {
+                  if (controlMsg.components && controlMsg.components.length) {
+                    toEdit.components = controlMsg.components;
+                  } else {
+                    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+                    const panelKeyLocal = `musicControl_${guild && guild.id ? guild.id : 'unknown'}`;
+                    const preRec = db.get(panelKeyLocal) || {};
+                    if (preRec && preRec.owner) {
+                      toEdit.components = [new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger),
+                        new ButtonBuilder().setCustomId('music_release').setLabel('Остановить бота').setStyle(ButtonStyle.Danger)
+                      )];
+                    } else {
+                      toEdit.components = [new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary)
+                      )];
+                    }
+                  }
+                }
+                await controlMsg.edit(toEdit);
+                return true;
+              } catch (e) { console.error('panel edit failed', e); }
             }
             return false;
           };
@@ -250,7 +274,7 @@ client.on('interactionCreate', async (interaction) => {
           if (panelRecQ && panelRecQ.channelId && panelRecQ.messageId) {
             try { const chq = await client.channels.fetch(panelRecQ.channelId).catch(() => null); if (chq && chq.messages) controlMsgQ = await chq.messages.fetch(panelRecQ.messageId).catch(() => null); } catch (e) { controlMsgQ = null; }
           }
-          const updatePanelQ = async (payload) => { if (controlMsgQ && controlMsgQ.edit) { try { await controlMsgQ.edit(payload); return true; } catch (e) { console.error('panel edit failed', e); } } return false; };
+          const updatePanelQ = async (payload) => { if (controlMsgQ && controlMsgQ.edit) { try { const toEdit = Object.assign({}, payload); if (Array.isArray(payload.components) && payload.components.length === 0) { if (controlMsgQ.components && controlMsgQ.components.length) { toEdit.components = controlMsgQ.components; } else { const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js'); const panelKeyLocal = `musicControl_${guild && guild.id ? guild.id : 'unknown'}`; const preRec = db.get(panelKeyLocal) || {}; if (preRec && preRec.owner) { toEdit.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId('music_release').setLabel('Остановить бота').setStyle(ButtonStyle.Danger))]; } else { toEdit.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary))]; } } } await controlMsgQ.edit(toEdit); return true; } catch (e) { console.error('panel edit failed', e); } } return false; };
 
           const startedQ = await updatePanelQ({ content: 'Добавляю в очередь...', embeds: [], components: [] });
           if (!startedQ) await safeReply(interaction, { content: 'Добавляю в очередь...', ephemeral: true });
@@ -281,7 +305,7 @@ client.on('interactionCreate', async (interaction) => {
           if (panelRecS && panelRecS.channelId && panelRecS.messageId) {
             try { const chs = await client.channels.fetch(panelRecS.channelId).catch(() => null); if (chs && chs.messages) controlMsgS = await chs.messages.fetch(panelRecS.messageId).catch(() => null); } catch (e) { controlMsgS = null; }
           }
-          const updatePanelS = async (payload) => { if (controlMsgS && controlMsgS.edit) { try { await controlMsgS.edit(payload); return true; } catch (e) { console.error('panel edit failed', e); } } return false; };
+          const updatePanelS = async (payload) => { if (controlMsgS && controlMsgS.edit) { try { const toEdit = Object.assign({}, payload); if (Array.isArray(payload.components) && payload.components.length === 0) { if (controlMsgS.components && controlMsgS.components.length) { toEdit.components = controlMsgS.components; } else { const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js'); const panelKeyLocal = `musicControl_${guild && guild.id ? guild.id : 'unknown'}`; const preRec = db.get(panelKeyLocal) || {}; if (preRec && preRec.owner) { toEdit.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId('music_release').setLabel('Остановить бота').setStyle(ButtonStyle.Danger))]; } else { toEdit.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary))]; } } } await controlMsgS.edit(toEdit); return true; } catch (e) { console.error('panel edit failed', e); } } return false; };
 
           const startedS = await updatePanelS({ content: `🔎 Ищу песню "${songName}"...`, embeds: [], components: [] });
           if (!startedS) await safeReply(interaction, { content: `🔎 Ищу песню "${songName}"...`, ephemeral: true });
@@ -302,7 +326,7 @@ client.on('interactionCreate', async (interaction) => {
           if (panelRecQ2 && panelRecQ2.channelId && panelRecQ2.messageId) {
             try { const chq2 = await client.channels.fetch(panelRecQ2.channelId).catch(() => null); if (chq2 && chq2.messages) controlMsgQ2 = await chq2.messages.fetch(panelRecQ2.messageId).catch(() => null); } catch (e) { controlMsgQ2 = null; }
           }
-          const updatePanelQ2 = async (payload) => { if (controlMsgQ2 && controlMsgQ2.edit) { try { await controlMsgQ2.edit(payload); return true; } catch (e) { console.error('panel edit failed', e); } } return false; };
+          const updatePanelQ2 = async (payload) => { if (controlMsgQ2 && controlMsgQ2.edit) { try { const toEdit = Object.assign({}, payload); if (Array.isArray(payload.components) && payload.components.length === 0) { if (controlMsgQ2.components && controlMsgQ2.components.length) { toEdit.components = controlMsgQ2.components; } else { const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js'); const panelKeyLocal = `musicControl_${guild && guild.id ? guild.id : 'unknown'}`; const preRec = db.get(panelKeyLocal) || {}; if (preRec && preRec.owner) { toEdit.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId('music_release').setLabel('Остановить бота').setStyle(ButtonStyle.Danger))]; } else { toEdit.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary))]; } } } await controlMsgQ2.edit(toEdit); return true; } catch (e) { console.error('panel edit failed', e); } } return false; };
 
           const startedQ2 = await updatePanelQ2({ content: `➕ Добавляю "${songName}" в очередь...`, embeds: [], components: [] });
           if (!startedQ2) await safeReply(interaction, { content: `➕ Добавляю "${songName}" в очередь...`, ephemeral: true });

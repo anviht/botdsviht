@@ -251,7 +251,22 @@ async function handleMusicButton(interaction) {
             if (ch && ch.messages) {
               const ctrl = await ch.messages.fetch(panelRec.messageId).catch(() => null);
               if (ctrl) {
-                await ctrl.edit({ content: '❌ Ты не подключен к голосовому каналу', embeds: [], components: [] }).catch(() => {});
+                try {
+                  const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+                  const embedErr = new EmbedBuilder().setTitle('❌ Ты не подключен к голосовому каналу').setColor(0xFF5252);
+                  let rowErr;
+                  if (panelRec && panelRec.owner) {
+                    rowErr = new ActionRowBuilder().addComponents(
+                      new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger),
+                      new ButtonBuilder().setCustomId('music_release').setLabel('Остановить бота').setStyle(ButtonStyle.Danger)
+                    );
+                  } else {
+                    rowErr = new ActionRowBuilder().addComponents(
+                      new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary)
+                    );
+                  }
+                  await ctrl.edit({ embeds: [embedErr], components: [rowErr] }).catch(() => {});
+                } catch (e) { /* ignore */ }
                 updated = true;
               }
             }
