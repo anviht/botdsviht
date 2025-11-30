@@ -325,7 +325,18 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
             
             for (const opts of qualityOptions) {
               try {
-                stream = ytdl(candidateUrl, { ...opts, highWaterMark: 1 << 25 });
+                // Use better options for ytdl-core to avoid YouTube blocking
+                const ytdlOpts = {
+                  ...opts,
+                  highWaterMark: 1 << 25,
+                  requestOptions: {
+                    headers: {
+                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    }
+                  }
+                };
+                
+                stream = ytdl(candidateUrl, ytdlOpts);
                 
                 if (stream) {
                   // Attach error handler BEFORE using stream

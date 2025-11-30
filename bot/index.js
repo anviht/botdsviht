@@ -587,4 +587,17 @@ async function gracefulShutdown(signal) {
 }
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// Global error handlers to prevent bot crash
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error && error.message ? error.message : error);
+  if (error && error.stack) console.error(error.stack);
+  // Don't exit - let bot continue running
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason && reason.message ? reason.message : reason);
+  // Don't exit - let bot continue running
+});
+
 client.login(token);
