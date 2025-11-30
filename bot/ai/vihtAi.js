@@ -1,6 +1,7 @@
 // AI wrapper - respond to explicit questions with canned answers, otherwise use Gemini
 const axios = require('axios');
 const db = require('../libs/db');
+const chatHistory = require('./chatHistory');
 
 function vihtError() {
   return 'В данный момент сервис перегружен. Пожалуйста, попробуйте позже.';
@@ -66,17 +67,34 @@ function cannedResponse(prompt) {
 }
 
 async function sendPrompt(prompt, opts = {}) {
+  const userId = opts.authorId || 'unknown';
+  
   // Check for canned responses FIRST (only on explicit questions)
   const canned = cannedResponse(prompt);
-  if (canned) return canned;
+  if (canned) {
+    // Store canned responses in history too for context
+    chatHistory.addMessage(userId, 'user', String(prompt));
+    chatHistory.addMessage(userId, 'assistant', canned);
+    return canned;
+  }
 
   // Otherwise, use Gemini AI
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return vihtError();
 
+  // Get user's conversation history for context
+  const userHistory = chatHistory.getHistory(userId);
+
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  
+  // Build conversation with history
+  const contents = [...userHistory, { role: 'user', parts: [{ text: String(prompt) }] }];
+  
   const payload = {
-    contents: [{ role: 'user', parts: [{ text: String(prompt) }] }],
+    contents: contents.map(c => ({
+      role: c.role,
+      parts: Array.isArray(c.parts) ? c.parts : [{ text: c.content || '' }]
+    })),
     systemInstruction: {
       parts: [{ text: `Ты — Viht, виртуальный помощник проекта Viht. Ты помощник для подключения и работы с VPN Viht, а также искусственный помощник в общении, информации, кодинге, разборе идей и размышлении над темами.
 
@@ -86,6 +104,8 @@ async function sendPrompt(prompt, opts = {}) {
 - Создать ключ доступа на https://vihtai.pro
 - Ответить на вопросы по кодингу, разработке и техническим темам
 - Общаться и помогать с информацией
+
+Помни контекст предыдущих сообщений пользователя — не переспрашивай то, что он уже говорил, и развивай диалог естественно.
 
 Отвечай по-русски, кратко, дружелюбно и по существу. Не добавляй списки опций, если пользователь не спросил. Используй эмодзи умеренно. Не упоминай имя модели, кроме как по прямому вопросу.` }] },
     generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
@@ -102,6 +122,11 @@ async function sendPrompt(prompt, opts = {}) {
       if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
         let out = sanitizeText(response.data.candidates[0].content.parts[0].text);
         if (out.length > 1800) out = out.slice(0, 1800).trim();
+        
+        // Store in history for context
+        chatHistory.addMessage(userId, 'user', String(prompt));
+        chatHistory.addMessage(userId, 'assistant', out);
+        
         try { if (db && db.incrementAi) db.incrementAi(); } catch (e) { console.warn('incrementAi failed:', e && e.message); }
         return out;
       }
