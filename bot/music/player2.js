@@ -21,6 +21,7 @@ function ensureState(guildId) {
     // Add error and state change logging
     player.on('error', (error) => {
       console.error(`[PLAYER ${guildId}] Error:`, error && error.message ? error.message : error);
+      try { const s = players.get(guildId); if (s) _killStateProcs(s); } catch (e) { /* ignore */ }
     });
     
     player.on('stateChange', (oldState, newState) => {
@@ -34,9 +35,41 @@ function ensureState(guildId) {
       volume: 1.0,
       playing: false,
       current: null
+      ,
+      // track spawned child processes and active streams for cleanup
+      _procs: []
     });
   }
   return players.get(guildId);
+}
+
+function _killStateProcs(state) {
+  try {
+    if (!state || !state._procs || !state._procs.length) return;
+    for (const item of state._procs.splice(0)) {
+      try {
+        if (!item) continue;
+        // child_process instances
+        if (item.kill && typeof item.kill === 'function') {
+          try { item.kill('SIGKILL'); } catch (e) { try { item.kill(); } catch (e2) {} }
+        }
+        // streams with destroy
+        if (item.destroy && typeof item.destroy === 'function') {
+          try { item.destroy(); } catch (e) { /* ignore */ }
+        }
+        // if wrapper object {proc, stream}
+        if (item.proc && item.proc.kill) {
+          try { item.proc.kill('SIGKILL'); } catch (e) { try { item.proc.kill(); } catch (e2) {} }
+        }
+        if (item.stream && item.stream.destroy) {
+          try { item.stream.destroy(); } catch (e) { /* ignore */ }
+        }
+      } catch (e) {
+        console.warn('Error killing state proc', e && e.message);
+      }
+    }
+    state._procs = [];
+  } catch (e) { console.warn('killStateProcs failed', e && e.message); }
 }
 
 async function loadSavedQueues() {
@@ -207,7 +240,7 @@ async function getStreamFromYtDlp(url) {
 }
 
 // Spawn yt-dlp and pipe its stdout into ffmpeg to produce raw PCM stream
-async function getStreamFromYtDlpPipe(url) {
+async function getStreamFromYtDlpPipe(url, state) {
   return new Promise((resolve) => {
     try {
       const yt = spawn(YTDLP_BIN, ['-f', 'bestaudio', '-o', '-', url], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -233,12 +266,21 @@ async function getStreamFromYtDlpPipe(url) {
       // watch stderr for hints
       ff.stderr.on('data', (d) => { console.log('yt-dlp->ffmpeg stderr:', String(d).slice(0,200)); });
 
+      // register processes on state for later cleanup (if provided)
+      try {
+        if (state && state._procs) {
+          state._procs.push(yt);
+          state._procs.push(ff);
+        }
+      } catch (e) { /* ignore */ }
+
       // give it a short grace period to start producing data
       let started = false;
       const onReadable = () => {
         if (!started) {
           started = true;
           console.log('getStreamFromYtDlpPipe: started streaming for', url.substring(0,80));
+          // return stream and leave processes registered on state
           resolve(ff.stdout);
         }
       };
@@ -274,6 +316,8 @@ async function getStreamFromYtDlpPipe(url) {
 async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
   try {
     const state = ensureState(guild.id);
+    // ensure previous procs/streams are stopped when starting new playback
+    try { _killStateProcs(state); } catch (e) {}
     const url = await findYouTubeUrl(queryOrUrl);
     if (!url) {
       if (textChannel && textChannel.send) await textChannel.send('❌ Не удалось найти трек по запросу.');
@@ -400,12 +444,15 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
           }
         }
 
+        // Before starting candidate attempts, ensure previous procs/streams are cleaned
+        try { _killStateProcs(state); } catch (e) { /* ignore */ }
+
         // 2) Fallback: ytdl-core with safe wrapper
         // Before trying ytdl-core, try an aggressive yt-dlp -> ffmpeg pipe fallback
         if (!resource) {
           try {
             console.log('Attempting yt-dlp -> ffmpeg pipe early for', candidateUrl.substring(0,80));
-            const pipeStreamEarly = await getStreamFromYtDlpPipe(candidateUrl).catch(() => null);
+                const pipeStreamEarly = await getStreamFromYtDlpPipe(candidateUrl, state).catch(() => null);
             if (pipeStreamEarly) {
               try {
                 resource = createAudioResource(pipeStreamEarly, { inputType: StreamType.Raw, inlineVolume: true });
@@ -539,7 +586,7 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
               } else {
                 // streamFromUrl failed for direct URL — try piping yt-dlp -> ffmpeg directly
                 try {
-                  const pipeStream = await getStreamFromYtDlpPipe(candidateUrl).catch(() => null);
+                  const pipeStream = await getStreamFromYtDlpPipe(candidateUrl, state).catch(() => null);
                   if (pipeStream) {
                     try {
                       resource = createAudioResource(pipeStream, { inputType: StreamType.Raw, inlineVolume: true });
@@ -563,7 +610,7 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
             } else {
               // direct URL extraction failed, try yt-dlp -> ffmpeg pipe directly
               try {
-                const pipeStream = await getStreamFromYtDlpPipe(candidateUrl).catch(() => null);
+                const pipeStream = await getStreamFromYtDlpPipe(candidateUrl, state).catch(() => null);
                 if (pipeStream) {
                   try {
                     resource = createAudioResource(pipeStream, { inputType: StreamType.Raw, inlineVolume: true });
@@ -670,6 +717,8 @@ async function stop(guild) {
     state.queue = [];
     state.playing = false;
     state.current = null;
+    // Kill any child processes/streams associated with this guild
+    try { _killStateProcs(state); } catch (e) {}
     await saveQueueForGuild(guild.id);
     const conn = getVoiceConnection(guild.id);
     if (conn) conn.destroy();
@@ -759,6 +808,9 @@ async function playRadio(guild, voiceChannel, radioStream, textChannel) {
         console.error('ffmpeg process error:', e && e.message);
       });
 
+      // track ffmpeg in state procs for cleanup and watch exit
+      try { if (state && state._procs) state._procs.push(ff); } catch (e) {}
+
       // If ffmpeg exits unexpectedly, log and attempt limited reconnects
       ff.on('exit', (code, signal) => {
         console.warn('ffmpeg exited with code', code, 'signal', signal);
@@ -774,6 +826,8 @@ async function playRadio(guild, voiceChannel, radioStream, textChannel) {
           console.error('playRadio: Max reconnect attempts reached for', url.substring(0, 80));
           if (textChannel && textChannel.send) textChannel.send('❌ Радиостанция недоступна (повторные ошибки).');
         }
+        // ensure any abandoned procs are cleaned
+        try { _killStateProcs(state); } catch (e) {}
       });
 
       // Create audio resource from ffmpeg stdout
