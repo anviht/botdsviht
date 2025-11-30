@@ -227,6 +227,31 @@ client.on('interactionCreate', async (interaction) => {
           return;
         } catch (e) { console.error('music_modal_queue submit error', e); return await safeReply(interaction, { content: 'Ошибка при добавлении в очередь.', ephemeral: true }); }
       }
+      // Custom music search modal: find and play
+      if (interaction.customId === 'music_search_modal') {
+        try {
+          const songName = interaction.fields.getTextInputValue('song_name').slice(0, 200);
+          const guild = interaction.guild;
+          const member = interaction.member || (guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null);
+          const voiceChannel = member && member.voice ? member.voice.channel : null;
+          if (!voiceChannel) return await safeReply(interaction, { content: '❌ Вы не в голосовом канале.', ephemeral: true });
+          await safeReply(interaction, { content: `🔎 Ищу песню "${songName}"...`, ephemeral: true });
+          await musicPlayer.playNow(guild, voiceChannel, songName, interaction.channel).catch(async (e) => { console.error('custom music search error', e); await safeReply(interaction, { content: 'Не удалось найти и воспроизвести песню.', ephemeral: true }); });
+          return;
+        } catch (e) { console.error('music_search_modal submit error', e); return await safeReply(interaction, { content: 'Ошибка при поиске песни.', ephemeral: true }); }
+      }
+      // Custom music queue modal: add to queue
+      if (interaction.customId === 'music_queue_modal') {
+        try {
+          const songName = interaction.fields.getTextInputValue('song_name_queue').slice(0, 200);
+          const guild = interaction.guild;
+          await safeReply(interaction, { content: `➕ Добавляю "${songName}" в очередь...`, ephemeral: true });
+          const ok = await musicPlayer.addToQueue(guild, songName);
+          if (ok) await safeReply(interaction, { content: `✅ "${songName}" добавлена в очередь`, ephemeral: true });
+          else await safeReply(interaction, { content: 'Не удалось найти и добавить песню.', ephemeral: true });
+          return;
+        } catch (e) { console.error('music_queue_modal submit error', e); return await safeReply(interaction, { content: 'Ошибка при добавлении в очередь.', ephemeral: true }); }
+      }
     }
   } catch (err) { console.error('interactionCreate handler error', err); }
 });
