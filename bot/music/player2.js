@@ -7,6 +7,10 @@ const { exec, spawn } = require('child_process');
 const db = require('../libs/db');
 const { Readable, PassThrough } = require('stream');
 
+// Allow overriding binaries via environment variables (useful for pm2)
+const YTDLP_BIN = process.env.YTDLP_PATH || process.env.YTDLP_BIN || 'yt-dlp';
+const FFMPEG_BIN = process.env.FFMPEG_PATH || process.env.FFMPEG_BIN || 'ffmpeg';
+
 // single in-memory state map
 const players = new Map();
 
@@ -182,11 +186,11 @@ async function streamFromUrl(url) {
 
 async function getStreamFromYtDlp(url) {
   return new Promise((resolve) => {
-    const cmd = `yt-dlp -f "bestaudio" -g "${url.replace(/"/g, '\\"')}" 2>&1`;
+    const cmd = `${YTDLP_BIN} -f "bestaudio" -g "${url.replace(/"/g, '\\"')}" 2>&1`;
     exec(cmd, { timeout: 30000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err || !stdout || stdout.includes('ERROR')) {
-        console.warn('yt-dlp failed:', err && err.message, 'stderr:', stderr || '');
-        resolve(null);
+        if (err || !stdout || stdout.includes('ERROR')) {
+          console.warn('yt-dlp failed:', err && err.message, 'stdout:', (stdout||'').slice(0,200), 'stderr:', (stderr||'').slice(0,400));
+          resolve(null);
       } else {
         const lines = stdout.trim().split('\n').filter(l => l.trim() && !l.startsWith('['));
         const directUrl = lines[lines.length - 1];
@@ -199,6 +203,71 @@ async function getStreamFromYtDlp(url) {
         }
       }
     });
+  });
+}
+
+// Spawn yt-dlp and pipe its stdout into ffmpeg to produce raw PCM stream
+async function getStreamFromYtDlpPipe(url) {
+  return new Promise((resolve) => {
+    try {
+      const yt = spawn(YTDLP_BIN, ['-f', 'bestaudio', '-o', '-', url], { stdio: ['ignore', 'pipe', 'pipe'] });
+      yt.on('error', (e) => {
+        console.warn('yt-dlp spawn error:', e && e.message);
+        try { yt.kill(); } catch (er) {}
+        resolve(null);
+      });
+
+      // If yt-dlp produced no stdout quickly, consider it failed
+      const ffmpegBin = process.env.FFMPEG_PATH || process.env.FFMPEG_BIN || FFMPEG_BIN;
+      const ff = spawn(ffmpegBin, ['-i', 'pipe:0', '-vn', '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'], { stdio: ['pipe', 'pipe', 'pipe'] });
+      ff.on('error', (e) => {
+        console.warn('ffmpeg spawn error for yt-dlp pipe:', e && e.message);
+        try { yt.kill(); } catch (er) {}
+        try { ff.kill(); } catch (er) {}
+        resolve(null);
+      });
+
+      // pipe yt stdout into ffmpeg stdin
+      yt.stdout.pipe(ff.stdin);
+
+      // watch stderr for hints
+      ff.stderr.on('data', (d) => { console.log('yt-dlp->ffmpeg stderr:', String(d).slice(0,200)); });
+
+      // give it a short grace period to start producing data
+      let started = false;
+      const onReadable = () => {
+        if (!started) {
+          started = true;
+          console.log('getStreamFromYtDlpPipe: started streaming for', url.substring(0,80));
+          resolve(ff.stdout);
+        }
+      };
+
+      ff.stdout.once('readable', onReadable);
+
+      // if either process exits without producing data, fail
+      const fail = () => {
+        if (!started) {
+          try { yt.kill(); } catch (e) {}
+          try { ff.kill(); } catch (e) {}
+          resolve(null);
+        }
+      };
+
+      yt.on('close', fail);
+      ff.on('close', fail);
+
+      // fallback timeout
+      setTimeout(() => {
+        if (!started) {
+          console.warn('getStreamFromYtDlpPipe: timeout waiting for stream', url.substring(0,80));
+          fail();
+        }
+      }, 8000);
+    } catch (e) {
+      console.warn('getStreamFromYtDlpPipe error', e && e.message);
+      resolve(null);
+    }
   });
 }
 
@@ -332,6 +401,30 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
         }
 
         // 2) Fallback: ytdl-core with safe wrapper
+        // Before trying ytdl-core, try an aggressive yt-dlp -> ffmpeg pipe fallback
+        if (!resource) {
+          try {
+            console.log('Attempting yt-dlp -> ffmpeg pipe early for', candidateUrl.substring(0,80));
+            const pipeStreamEarly = await getStreamFromYtDlpPipe(candidateUrl).catch(() => null);
+            if (pipeStreamEarly) {
+              try {
+                resource = createAudioResource(pipeStreamEarly, { inputType: StreamType.Raw, inlineVolume: true });
+                resolvedUrl = candidateUrl;
+                detail.attempts.push({ method: 'yt-dlp-pipe-early', ok: true });
+                attemptDetails.push(detail);
+                console.log('✅ yt-dlp pipe (early) SUCCESS for', candidateUrl.substring(0,80));
+              } catch (e) {
+                console.warn('yt-dlp pipe (early) createAudioResource failed:', e && e.message);
+                try { if (pipeStreamEarly && typeof pipeStreamEarly.destroy === 'function') pipeStreamEarly.destroy(); } catch (ee) {}
+              }
+            } else {
+              detail.attempts.push({ method: 'yt-dlp-pipe-early', ok: false, error: 'no pipe stream' });
+            }
+          } catch (e) {
+            detail.attempts.push({ method: 'yt-dlp-pipe-early', ok: false, error: String(e && e.message || e).slice(0,100) });
+          }
+        }
+
         // Wrap in Promise to catch async errors from stream reading
         if (!resource) {
           try {
@@ -430,7 +523,7 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
             console.log('Attempting yt-dlp CLI for', candidateUrl.substring(0, 80));
             const direct = await getStreamFromYtDlp(candidateUrl).catch(() => null);
             if (direct) {
-              const s = await streamFromUrl(direct).catch(() => null);
+              let s = await streamFromUrl(direct).catch(() => null);
               if (s) {
                 try {
                   resource = createAudioResource(s, { inlineVolume: true });
@@ -444,9 +537,51 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
                   try { if (s && typeof s.destroy === 'function') s.destroy(); } catch (ee) {}
                 }
               } else {
+                // streamFromUrl failed for direct URL — try piping yt-dlp -> ffmpeg directly
+                try {
+                  const pipeStream = await getStreamFromYtDlpPipe(candidateUrl).catch(() => null);
+                  if (pipeStream) {
+                    try {
+                      resource = createAudioResource(pipeStream, { inputType: StreamType.Raw, inlineVolume: true });
+                      resolvedUrl = candidateUrl;
+                      detail.attempts.push({ method: 'yt-dlp-pipe', ok: true });
+                      attemptDetails.push(detail);
+                      console.log('✅ yt-dlp pipe SUCCESS for', candidateUrl.substring(0, 80));
+                      break;
+                    } catch (e) {
+                      console.warn('yt-dlp pipe createAudioResource failed:', e && e.message);
+                      try { if (pipeStream && typeof pipeStream.destroy === 'function') pipeStream.destroy(); } catch (ee) {}
+                    }
+                  } else {
+                    detail.attempts.push({ method: 'yt-dlp-pipe', ok: false, error: 'no pipe stream' });
+                  }
+                } catch (e) {
+                  detail.attempts.push({ method: 'yt-dlp-pipe', ok: false, error: String(e && e.message || e).slice(0,100) });
+                }
                 detail.attempts.push({ method: 'yt-dlp-cli', ok: false, error: 'streamFromUrl failed' });
               }
             } else {
+              // direct URL extraction failed, try yt-dlp -> ffmpeg pipe directly
+              try {
+                const pipeStream = await getStreamFromYtDlpPipe(candidateUrl).catch(() => null);
+                if (pipeStream) {
+                  try {
+                    resource = createAudioResource(pipeStream, { inputType: StreamType.Raw, inlineVolume: true });
+                    resolvedUrl = candidateUrl;
+                    detail.attempts.push({ method: 'yt-dlp-pipe', ok: true });
+                    attemptDetails.push(detail);
+                    console.log('✅ yt-dlp pipe SUCCESS for', candidateUrl.substring(0, 80));
+                    break;
+                  } catch (e) {
+                    console.warn('yt-dlp pipe createAudioResource failed:', e && e.message);
+                    try { if (pipeStream && typeof pipeStream.destroy === 'function') pipeStream.destroy(); } catch (ee) {}
+                  }
+                } else {
+                  detail.attempts.push({ method: 'yt-dlp-pipe', ok: false, error: 'no pipe stream' });
+                }
+              } catch (e) {
+                detail.attempts.push({ method: 'yt-dlp-pipe', ok: false, error: String(e && e.message || e).slice(0,100) });
+              }
               detail.attempts.push({ method: 'yt-dlp-cli', ok: false, error: 'no url' });
             }
           } catch (e) {
