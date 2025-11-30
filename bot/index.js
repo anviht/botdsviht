@@ -209,56 +209,13 @@ client.on('interactionCreate', async (interaction) => {
           const guild = interaction.guild;
           const member = interaction.member || (guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null);
           const voiceChannel = member && member.voice ? member.voice.channel : null;
-          if (!voiceChannel) return await safeReply(interaction, { content: 'Вы не в голосовом канале.', ephemeral: true });
-
-          // Try to update central control panel message if available
-          const panelKey = `musicControl_${guild && guild.id ? guild.id : 'unknown'}`;
-          const panelRec = db.get(panelKey);
-          let controlMsg = null;
-          if (panelRec && panelRec.channelId && panelRec.messageId) {
-            try {
-              const ch = await client.channels.fetch(panelRec.channelId).catch(() => null);
-              if (ch && ch.messages) controlMsg = await ch.messages.fetch(panelRec.messageId).catch(() => null);
-            } catch (e) { controlMsg = null; }
+          if (!voiceChannel) {
+            await safeReply(interaction, { content: 'Вы не в голосовом канале.', ephemeral: true });
+            return;
           }
-
-          const updatePanel = async (payload) => {
-            if (controlMsg && controlMsg.edit) {
-              try {
-                const toEdit = Object.assign({}, payload);
-                // If caller intentionally passed an empty components array, preserve existing components
-                if (Array.isArray(payload.components) && payload.components.length === 0) {
-                  if (controlMsg.components && controlMsg.components.length) {
-                    toEdit.components = controlMsg.components;
-                  } else {
-                    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-                    const panelKeyLocal = `musicControl_${guild && guild.id ? guild.id : 'unknown'}`;
-                    const preRec = db.get(panelKeyLocal) || {};
-                    if (preRec && preRec.owner) {
-                      toEdit.components = [new ActionRowBuilder().addComponents(
-                        new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger),
-                        new ButtonBuilder().setCustomId('music_release').setLabel('Остановить бота').setStyle(ButtonStyle.Danger)
-                      )];
-                    } else {
-                      toEdit.components = [new ActionRowBuilder().addComponents(
-                        new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary)
-                      )];
-                    }
-                  }
-                }
-                await controlMsg.edit(toEdit);
-                return true;
-              } catch (e) { console.error('panel edit failed', e); }
-            }
-            return false;
-          };
-
-          const started = await updatePanel({ content: `🔎 Ищу и начинаю воспроизведение...`, embeds: [], components: [] });
-          if (!started) await safeReply(interaction, { content: '🔎 Ищу и начинаю воспроизведение...', ephemeral: true });
-
-          await musicPlayer.playNow(guild, voiceChannel, query, interaction.channel, interaction.user.id).then(async () => {
-            await updatePanel({ content: `▶️ Воспроизведение: ${query}`, embeds: [], components: [] }).catch(()=>{});
-          }).catch(async (e) => { console.error('playNow error', e); const ok = await updatePanel({ content: '❌ Ошибка при воспроизведении трека.', embeds: [], components: [] }); if (!ok) await safeReply(interaction, { content: 'Ошибка при воспроизведении трека.', ephemeral: true }); });
+          // Let musicPlayer.playNow handle all updates via updateControlMessageWithError
+          await safeReply(interaction, { content: '🔎 Ищу и начинаю воспроизведение...', ephemeral: true });
+          await musicPlayer.playNow(guild, voiceChannel, query, interaction.channel, interaction.user.id).catch(async (e) => { console.error('playNow error', e); });
           return;
         } catch (e) { console.error('music_modal submit error', e); return await safeReply(interaction, { content: 'Ошибка при обработке формы музыки.', ephemeral: true }); }
       }
@@ -267,25 +224,11 @@ client.on('interactionCreate', async (interaction) => {
         try {
           const query = interaction.fields.getTextInputValue('music_query').slice(0, 400);
           const guild = interaction.guild;
-
-          const panelKeyQ = `musicControl_${guild && guild.id ? guild.id : 'unknown'}`;
-          const panelRecQ = db.get(panelKeyQ);
-          let controlMsgQ = null;
-          if (panelRecQ && panelRecQ.channelId && panelRecQ.messageId) {
-            try { const chq = await client.channels.fetch(panelRecQ.channelId).catch(() => null); if (chq && chq.messages) controlMsgQ = await chq.messages.fetch(panelRecQ.messageId).catch(() => null); } catch (e) { controlMsgQ = null; }
-          }
-          const updatePanelQ = async (payload) => { if (controlMsgQ && controlMsgQ.edit) { try { const toEdit = Object.assign({}, payload); if (Array.isArray(payload.components) && payload.components.length === 0) { if (controlMsgQ.components && controlMsgQ.components.length) { toEdit.components = controlMsgQ.components; } else { const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js'); const panelKeyLocal = `musicControl_${guild && guild.id ? guild.id : 'unknown'}`; const preRec = db.get(panelKeyLocal) || {}; if (preRec && preRec.owner) { toEdit.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId('music_release').setLabel('Остановить бота').setStyle(ButtonStyle.Danger))]; } else { toEdit.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary))]; } } } await controlMsgQ.edit(toEdit); return true; } catch (e) { console.error('panel edit failed', e); } } return false; };
-
-          const startedQ = await updatePanelQ({ content: 'Добавляю в очередь...', embeds: [], components: [] });
-          if (!startedQ) await safeReply(interaction, { content: 'Добавляю в очередь...', ephemeral: true });
-
           const ok = await musicPlayer.addToQueue(guild, query);
           if (ok) {
-            const done = await updatePanelQ({ content: 'Добавлено в очередь ✅', embeds: [], components: [] });
-            if (!done) await safeReply(interaction, { content: 'Добавлено в очередь ✅', ephemeral: true });
+            await safeReply(interaction, { content: 'Добавлено в очередь ✅', ephemeral: true });
           } else {
-            const done = await updatePanelQ({ content: 'Не удалось добавить в очередь.', embeds: [], components: [] });
-            if (!done) await safeReply(interaction, { content: 'Не удалось добавить в очередь.', ephemeral: true });
+            await safeReply(interaction, { content: 'Не удалось добавить в очередь.', ephemeral: true });
           }
           return;
         } catch (e) { console.error('music_modal_queue submit error', e); return await safeReply(interaction, { content: 'Ошибка при обработке формы музыки.', ephemeral: true }); }
@@ -297,20 +240,13 @@ client.on('interactionCreate', async (interaction) => {
           const guild = interaction.guild;
           const member = interaction.member || (guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null);
           const voiceChannel = member && member.voice ? member.voice.channel : null;
-          if (!voiceChannel) return await safeReply(interaction, { content: '❌ Вы не в голосовом канале.', ephemeral: true });
-
-          const panelKeyS = `musicControl_${guild && guild.id ? guild.id : 'unknown'}`;
-          const panelRecS = db.get(panelKeyS);
-          let controlMsgS = null;
-          if (panelRecS && panelRecS.channelId && panelRecS.messageId) {
-            try { const chs = await client.channels.fetch(panelRecS.channelId).catch(() => null); if (chs && chs.messages) controlMsgS = await chs.messages.fetch(panelRecS.messageId).catch(() => null); } catch (e) { controlMsgS = null; }
+          if (!voiceChannel) {
+            await safeReply(interaction, { content: '❌ Вы не в голосовом канале.', ephemeral: true });
+            return;
           }
-          const updatePanelS = async (payload) => { if (controlMsgS && controlMsgS.edit) { try { const toEdit = Object.assign({}, payload); if (Array.isArray(payload.components) && payload.components.length === 0) { if (controlMsgS.components && controlMsgS.components.length) { toEdit.components = controlMsgS.components; } else { const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js'); const panelKeyLocal = `musicControl_${guild && guild.id ? guild.id : 'unknown'}`; const preRec = db.get(panelKeyLocal) || {}; if (preRec && preRec.owner) { toEdit.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId('music_release').setLabel('Остановить бота').setStyle(ButtonStyle.Danger))]; } else { toEdit.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary))]; } } } await controlMsgS.edit(toEdit); return true; } catch (e) { console.error('panel edit failed', e); } } return false; };
-
-          const startedS = await updatePanelS({ content: `🔎 Ищу песню "${songName}"...`, embeds: [], components: [] });
-          if (!startedS) await safeReply(interaction, { content: `🔎 Ищу песню "${songName}"...`, ephemeral: true });
-
-          await musicPlayer.playNow(guild, voiceChannel, songName, interaction.channel, interaction.user.id).catch(async (e) => { console.error('custom music search error', e); const ok = await updatePanelS({ content: 'Не удалось найти и воспроизвести песню.', embeds: [], components: [] }); if (!ok) await safeReply(interaction, { content: 'Не удалось найти и воспроизвести песню.', ephemeral: true }); });
+          // Let musicPlayer.playNow handle all updates via updateControlMessageWithError
+          await safeReply(interaction, { content: `🔎 Ищу песню "${songName}"...`, ephemeral: true });
+          await musicPlayer.playNow(guild, voiceChannel, songName, interaction.channel, interaction.user.id).catch(async (e) => { console.error('custom music search error', e); });
           return;
         } catch (e) { console.error('music_search_modal submit error', e); return await safeReply(interaction, { content: 'Ошибка при поиске песни.', ephemeral: true }); }
       }
@@ -319,25 +255,11 @@ client.on('interactionCreate', async (interaction) => {
         try {
           const songName = interaction.fields.getTextInputValue('song_name_queue').slice(0, 200);
           const guild = interaction.guild;
-
-          const panelKeyQ2 = `musicControl_${guild && guild.id ? guild.id : 'unknown'}`;
-          const panelRecQ2 = db.get(panelKeyQ2);
-          let controlMsgQ2 = null;
-          if (panelRecQ2 && panelRecQ2.channelId && panelRecQ2.messageId) {
-            try { const chq2 = await client.channels.fetch(panelRecQ2.channelId).catch(() => null); if (chq2 && chq2.messages) controlMsgQ2 = await chq2.messages.fetch(panelRecQ2.messageId).catch(() => null); } catch (e) { controlMsgQ2 = null; }
-          }
-          const updatePanelQ2 = async (payload) => { if (controlMsgQ2 && controlMsgQ2.edit) { try { const toEdit = Object.assign({}, payload); if (Array.isArray(payload.components) && payload.components.length === 0) { if (controlMsgQ2.components && controlMsgQ2.components.length) { toEdit.components = controlMsgQ2.components; } else { const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js'); const panelKeyLocal = `musicControl_${guild && guild.id ? guild.id : 'unknown'}`; const preRec = db.get(panelKeyLocal) || {}; if (preRec && preRec.owner) { toEdit.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId('music_release').setLabel('Остановить бота').setStyle(ButtonStyle.Danger))]; } else { toEdit.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary))]; } } } await controlMsgQ2.edit(toEdit); return true; } catch (e) { console.error('panel edit failed', e); } } return false; };
-
-          const startedQ2 = await updatePanelQ2({ content: `➕ Добавляю "${songName}" в очередь...`, embeds: [], components: [] });
-          if (!startedQ2) await safeReply(interaction, { content: `➕ Добавляю "${songName}" в очередь...`, ephemeral: true });
-
           const ok = await musicPlayer.addToQueue(guild, songName);
           if (ok) {
-            const done = await updatePanelQ2({ content: `✅ "${songName}" добавлена в очередь`, embeds: [], components: [] });
-            if (!done) await safeReply(interaction, { content: `✅ "${songName}" добавлена в очередь`, ephemeral: true });
+            await safeReply(interaction, { content: `✅ "${songName}" добавлена в очередь`, ephemeral: true });
           } else {
-            const done = await updatePanelQ2({ content: 'Не удалось найти и добавить песню.', embeds: [], components: [] });
-            if (!done) await safeReply(interaction, { content: 'Не удалось найти и добавить песню.', ephemeral: true });
+            await safeReply(interaction, { content: 'Не удалось найти и добавить песню.', ephemeral: true });
           }
           return;
         } catch (e) { console.error('music_queue_modal submit error', e); return await safeReply(interaction, { content: 'Ошибка при добавлении в очередь.', ephemeral: true }); }
