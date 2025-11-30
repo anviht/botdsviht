@@ -17,56 +17,50 @@ async function handleMusicButton(interaction) {
   try {
     // Main music menu - show options
     if (customId === 'music_menu') {
-      await interaction.deferReply({ flags: 64 });
+      // Update the existing control message instead of sending new replies
       const embed = createMusicMenuEmbed();
-      
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('music_radio').setLabel('📻 Радио').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('music_own').setLabel('🎵 Своя музыка').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('music_link').setLabel('🔗 Ссылка').setStyle(ButtonStyle.Secondary).setDisabled(true),
         new ButtonBuilder().setCustomId('music_back').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       );
-
-      await interaction.editReply({ embeds: [embed], components: [row] });
+      try { await interaction.update({ embeds: [embed], components: [row] }); } catch (e) { await interaction.editReply({ embeds: [embed], components: [row] }).catch(()=>{}); }
       return;
     }
 
     // Show radio list
     if (customId === 'music_radio') {
-      await interaction.deferReply({ flags: 64 });
       const embed = createRadioListEmbed();
-      
       const radioButtons = radios.map((radio, idx) =>
         new ButtonBuilder()
           .setCustomId(`radio_play_${radio.id}`)
           .setLabel(radio.label.substring(0, 80))
           .setStyle(ButtonStyle.Success)
       );
-
-      // Split buttons into rows (max 5 per row)
       const rows = [];
       for (let i = 0; i < radioButtons.length; i += 5) {
         rows.push(new ActionRowBuilder().addComponents(radioButtons.slice(i, i + 5)));
       }
-
-      // Add back button
       rows.push(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       ));
-
-      await interaction.editReply({ embeds: [embed], components: rows });
+      try { await interaction.update({ embeds: [embed], components: rows }); } catch (e) { await interaction.editReply({ embeds: [embed], components: rows }).catch(()=>{}); }
       return;
     }
 
     // Play radio station
     if (customId.startsWith('radio_play_')) {
-      await interaction.deferReply({ flags: 64 });
+      // User clicked a station — update the same control message with status
       
       const radioId = customId.replace('radio_play_', '');
       const radio = radios.find(r => r.id === radioId);
       
       if (!radio) {
-        return await interaction.editReply({ content: '❌ Радиостанция не найдена', flags: 64 });
+        const embed = new EmbedBuilder().setTitle('❌ Радиостанция не найдена').setColor(0xFF5252);
+        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_radio').setLabel('← Назад').setStyle(ButtonStyle.Danger));
+        try { await interaction.update({ embeds: [embed], components: [row] }); } catch (e) { await interaction.editReply({ embeds: [embed], components: [row] }).catch(()=>{}); }
+        return;
       }
 
       // Get or create voice channel connection — ensure member is fetched so voice state is available
@@ -84,13 +78,16 @@ async function handleMusicButton(interaction) {
         const radioStream = { url: radio.url };
         const ok = await musicPlayer.playRadio(guild, voiceChannel, radioStream, interaction.channel, user.id);
         if (!ok) {
-          return await interaction.editReply({ content: '❌ Не удалось подключиться к радиостанции.', flags: 64 });
+          const embed = new EmbedBuilder().setTitle('❌ Не удалось подключиться к радиостанции').setColor(0xFF5252).setDescription('Попробуйте ещё раз');
+          const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_radio').setLabel('← Назад').setStyle(ButtonStyle.Danger));
+          try { await interaction.update({ embeds: [embed], components: [row] }); } catch (e) { await interaction.editReply({ embeds: [embed], components: [row] }).catch(()=>{}); }
+          return;
         }
 
         // Store active radio info
         activeRadios.set(guild.id, { radio, userId: user.id });
 
-        // Show now playing embed with controls
+        // Show now playing embed with controls (update same message)
         const embed = createPlayerControlsEmbed(radio.label);
         const controlRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('radio_volume_down').setLabel('🔉 Тише').setStyle(ButtonStyle.Primary),
@@ -98,82 +95,67 @@ async function handleMusicButton(interaction) {
           new ButtonBuilder().setCustomId('radio_volume_up').setLabel('🔊 Громче').setStyle(ButtonStyle.Primary),
           new ButtonBuilder().setCustomId('radio_stop').setLabel('⏹️ Стоп').setStyle(ButtonStyle.Danger)
         );
-
-        await interaction.editReply({ embeds: [embed], components: [controlRow] });
+        try { await interaction.update({ embeds: [embed], components: [controlRow] }); } catch (e) { await interaction.editReply({ embeds: [embed], components: [controlRow] }).catch(()=>{}); }
       } catch (err) {
         console.error('Error playing radio:', err);
-        await interaction.editReply({ content: `❌ Ошибка при подключении к радио: ${err.message}`, flags: 64 });
+        const embed = new EmbedBuilder().setTitle('❌ Ошибка при подключении к радио').setColor(0xFF5252).setDescription(err && err.message ? String(err.message).slice(0,200) : 'Ошибка');
+        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_radio').setLabel('← Назад').setStyle(ButtonStyle.Danger));
+        try { await interaction.update({ embeds: [embed], components: [row] }); } catch (e) { await interaction.editReply({ embeds: [embed], components: [row] }).catch(()=>{}); }
       }
       return;
     }
 
     // Volume controls
     if (customId === 'radio_volume_up') {
-      await interaction.deferReply({ flags: 64 });
       try {
         const newVol = await musicPlayer.changeVolume(guild, 0.1);
-        await interaction.editReply({ content: `🔊 Громкость: ${Math.round(newVol * 100)}%`, flags: 64 });
+        await interaction.update({ content: `🔊 Громкость: ${Math.round(newVol * 100)}%` }).catch(()=>{});
       } catch (err) {
-        await interaction.editReply({ content: '❌ Ошибка при изменении громкости', flags: 64 });
+        await interaction.update({ content: '❌ Ошибка при изменении громкости' }).catch(()=>{});
       }
       return;
     }
 
     if (customId === 'radio_volume_down') {
-      await interaction.deferReply({ flags: 64 });
       try {
         const newVol = await musicPlayer.changeVolume(guild, -0.1);
-        await interaction.editReply({ content: `🔉 Громкость: ${Math.round(newVol * 100)}%`, flags: 64 });
+        await interaction.update({ content: `🔉 Громкость: ${Math.round(newVol * 100)}%` }).catch(()=>{});
       } catch (err) {
-        await interaction.editReply({ content: '❌ Ошибка при изменении громкости', flags: 64 });
+        await interaction.update({ content: '❌ Ошибка при изменении громкости' }).catch(()=>{});
       }
       return;
     }
 
     // Switch station (go back to radio list)
     if (customId === 'radio_next_station') {
-      await interaction.deferReply({ flags: 64 });
       const embed = createRadioListEmbed();
-      
       const radioButtons = radios.map((radio, idx) =>
         new ButtonBuilder()
           .setCustomId(`radio_play_${radio.id}`)
           .setLabel(radio.label.substring(0, 80))
           .setStyle(ButtonStyle.Success)
       );
-
       const rows = [];
       for (let i = 0; i < radioButtons.length; i += 5) {
         rows.push(new ActionRowBuilder().addComponents(radioButtons.slice(i, i + 5)));
       }
-
       rows.push(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger)
       ));
-
-      await interaction.editReply({ embeds: [embed], components: rows });
+      try { await interaction.update({ embeds: [embed], components: rows }); } catch (e) { await interaction.editReply({ embeds: [embed], components: rows }).catch(()=>{}); }
       return;
     }
 
     // Stop radio
     if (customId === 'radio_stop') {
-      await interaction.deferReply({ flags: 64 });
       try {
         await musicPlayer.stop(guild);
         activeRadios.delete(guild.id);
-        
-        const embed = new EmbedBuilder()
-          .setTitle('⏹️ Музыка остановлена')
-          .setColor(0xFF5252)
-          .setDescription('Плеер выключен');
-        
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('music_menu').setLabel('← В главное меню').setStyle(ButtonStyle.Primary)
-        );
-
-        await interaction.editReply({ embeds: [embed], components: [row] });
+        const embed = new EmbedBuilder().setTitle('⏹️ Музыка остановлена').setColor(0xFF5252).setDescription('Плеер выключен');
+        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_menu').setLabel('← В главное меню').setStyle(ButtonStyle.Primary));
+        try { await interaction.update({ embeds: [embed], components: [row] }); } catch (e) { await interaction.editReply({ embeds: [embed], components: [row] }).catch(()=>{}); }
       } catch (err) {
-        await interaction.editReply({ content: '❌ Ошибка при остановке плеера', flags: 64 });
+        await interaction.update({ content: '❌ Ошибка при остановке плеера' }).catch(()=>{});
       }
       return;
     }

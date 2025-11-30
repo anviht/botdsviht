@@ -391,7 +391,7 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId) {
       }
     } else if (url && Array.isArray(url.candidates)) {
       for (const c of url.candidates) {
-        candidates.push(c.url || c);
+        candidates.push({ url: c.url || c, title: c.title || null });
       }
     }
 
@@ -400,14 +400,16 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId) {
       const attemptDetails = [];
       let lastErr = null;
       // iterate candidates sequentially
-      for (const candidateUrl of candidates) {
+      for (const candidate of candidates) {
+        const candidateUrl = (typeof candidate === 'string') ? candidate : candidate.url;
+        const candidateTitle = (typeof candidate === 'object' && candidate.title) ? candidate.title : null;
         attempted.push(candidateUrl);
-        const detail = { candidate: candidateUrl, attempts: [] };
+        const detail = { candidate: candidateUrl, title: candidateTitle, attempts: [] };
 
         // 1) Try play-dl FIRST (most reliable against YouTube blocking)
         if (!resource && playdl) {
           try {
-            console.log('Attempting play-dl for', candidateUrl.substring(0, 80));
+            console.log('Attempting play-dl for', (candidateTitle || candidateUrl).substring(0, 80));
             let pl = null;
             try {
               // play-dl sometimes prefers shorthand URL format
@@ -443,6 +445,7 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId) {
             if (pl && pl.stream) {
               resource = createAudioResource(pl.stream, { inlineVolume: true });
               resolvedUrl = candidateUrl;
+              resolvedTitle = candidateTitle || (pl && (pl.video_info && (pl.video_info.title || pl.video_info.name)));
               detail.attempts.push({ method: 'play-dl', ok: true });
               attemptDetails.push(detail);
               console.log('✅ play-dl SUCCESS for', candidateUrl.substring(0, 80));
@@ -495,7 +498,7 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId) {
         // Wrap in Promise to catch async errors from stream reading
         if (!resource) {
           try {
-            console.log('Attempting ytdl-core for', candidateUrl.substring(0, 80));
+            console.log('Attempting ytdl-core for', (candidateTitle || candidateUrl).substring(0, 80));
             
             // Create stream safely with error handling
             let stream = null;
@@ -555,6 +558,7 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId) {
                   try {
                     resource = createAudioResource(pass, { inlineVolume: true });
                     resolvedUrl = candidateUrl;
+                    resolvedTitle = candidateTitle;
                     detail.attempts.push({ method: 'ytdl-core', ok: true });
                     attemptDetails.push(detail);
                     console.log('✅ ytdl-core SUCCESS for', candidateUrl.substring(0, 80));
@@ -587,7 +591,7 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId) {
         if (!resource) {
           // As a last resort try yt-dlp CLI to extract a direct URL and stream that
           try {
-            console.log('Attempting yt-dlp CLI for', candidateUrl.substring(0, 80));
+            console.log('Attempting yt-dlp CLI for', (candidateTitle || candidateUrl).substring(0, 80));
             const direct = await getStreamFromYtDlp(candidateUrl).catch(() => null);
             if (direct) {
               let s = await streamFromUrl(direct).catch(() => null);
@@ -595,6 +599,7 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId) {
                 try {
                   resource = createAudioResource(s, { inlineVolume: true });
                   resolvedUrl = direct;
+                  resolvedTitle = candidateTitle;
                   detail.attempts.push({ method: 'yt-dlp-cli', ok: true });
                   attemptDetails.push(detail);
                   console.log('✅ yt-dlp CLI SUCCESS for', candidateUrl.substring(0, 80));
@@ -611,6 +616,7 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId) {
                     try {
                       resource = createAudioResource(pipeStream, { inputType: StreamType.Raw, inlineVolume: true });
                       resolvedUrl = candidateUrl;
+                      resolvedTitle = candidateTitle;
                       detail.attempts.push({ method: 'yt-dlp-pipe', ok: true });
                       attemptDetails.push(detail);
                       console.log('✅ yt-dlp pipe SUCCESS for', candidateUrl.substring(0, 80));
@@ -682,9 +688,9 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId) {
     }
     state.playing = true;
     
-    // Use resolvedUrl for display (it's the actual YouTube URL we used)
-    const displayUrl = resolvedUrl && typeof resolvedUrl === 'string' ? resolvedUrl : (typeof url === 'string' ? url : 'Музыка');
-    state.current = { url: displayUrl, title: displayUrl, owner: userId ? String(userId) : null, type: 'music' };
+    // Use resolvedTitle (preferred) or URL for display; do not post raw URLs into chat when possible
+    const displayTitle = resolvedTitle || (resolvedUrl && typeof resolvedUrl === 'string' ? resolvedUrl : (typeof url === 'string' ? url : 'Музыка'));
+    state.current = { url: resolvedUrl || (typeof url === 'string' ? url : null), title: displayTitle, owner: userId ? String(userId) : null, type: 'music' };
 
     state.player.once(AudioPlayerStatus.Idle, async () => {
       state.playing = false;
