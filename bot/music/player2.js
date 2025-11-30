@@ -349,7 +349,15 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
             ];
             
             for (const opts of qualityOptions) {
-              try {
+                try {
+                // First attempt to fetch video info to ensure signature extraction works
+                try {
+                  await ytdl.getInfo(candidateUrl);
+                } catch (infoErr) {
+                  console.warn('ytdl-core getInfo failed, skipping candidate:', String(infoErr && infoErr.message || infoErr).slice(0,200));
+                  stream = null;
+                  continue; // try next quality option or candidate
+                }
                 // Use better options for ytdl-core to avoid YouTube blocking
                 const ytdlOpts = {
                   ...opts,
@@ -558,47 +566,51 @@ async function playRadio(guild, voiceChannel, radioStream, textChannel) {
     // Always use ffmpeg for radio to ensure proper codec and stability
     let resource = null;
     try {
-      const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
-      console.log('playRadio: Starting ffmpeg decode for', url.substring(0, 80));
-      
-      const ff = spawn(ffmpegPath, [
+      // Prefer system ffmpeg first; fallback to FFMPEG_PATH if system binary missing
+      let ff = null;
+      const spawnFfmpeg = (bin) => spawn(bin, [
         '-i', url,
-        '-vn',                 // no video
-        '-f', 's16le',         // raw PCM format
-        '-ar', '48000',        // 48kHz sample rate
-        '-ac', '2',            // stereo
-        'pipe:1'               // write to stdout
-      ], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        maxBuffer: 10 * 1024 * 1024  // 10MB buffer
-      });
+        '-vn',
+        '-f', 's16le',
+        '-ar', '48000',
+        '-ac', '2',
+        'pipe:1'
+      ], { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 10 * 1024 * 1024 });
 
-      // Log ffmpeg errors
+      try {
+        ff = spawnFfmpeg('ffmpeg');
+      } catch (e) {
+        console.warn('playRadio: spawn system ffmpeg failed, will try fallback if configured', e && e.message);
+      }
+      if (!ff && process.env.FFMPEG_PATH) {
+        try { ff = spawnFfmpeg(process.env.FFMPEG_PATH); } catch (e) { console.error('playRadio: spawn fallback ffmpeg failed', e && e.message); }
+      }
+      if (!ff) throw new Error('No ffmpeg available');
+
+      // Log ffmpeg stderr
       ff.stderr.on('data', (data) => {
         console.warn('ffmpeg stderr:', String(data).slice(0, 200));
       });
-      
+
       ff.on('error', (e) => {
         console.error('ffmpeg process error:', e && e.message);
       });
 
-      // If ffmpeg exits unexpectedly, log and try a single reconnect attempt
+      // If ffmpeg exits unexpectedly, log and attempt limited reconnects
       ff.on('exit', (code, signal) => {
         console.warn('ffmpeg exited with code', code, 'signal', signal);
-        try {
-          if (state && state.player) {
-            state.player.stop();
-            state.playing = false;
-          }
-        } catch (e) {}
+        try { if (state && state.player) { state.player.stop(); state.playing = false; } } catch (e) {}
 
-        // Try to restart radio once after short delay
-        setTimeout(() => {
-          try {
-            console.log('playRadio: Attempting single reconnect for', url.substring(0, 80));
-            playRadio(guild, voiceChannel, radioStream, textChannel);
-          } catch (e) { /* ignore */ }
-        }, 3000);
+        state._radioRetries = state._radioRetries || {};
+        const key = String(url);
+        state._radioRetries[key] = (state._radioRetries[key] || 0) + 1;
+        const maxRetries = 2;
+        if (state._radioRetries[key] <= maxRetries) {
+          setTimeout(() => { try { playRadio(guild, voiceChannel, radioStream, textChannel); } catch (e) {} }, 3000);
+        } else {
+          console.error('playRadio: Max reconnect attempts reached for', url.substring(0, 80));
+          if (textChannel && textChannel.send) textChannel.send('❌ Радиостанция недоступна (повторные ошибки).');
+        }
       });
 
       // Create audio resource from ffmpeg stdout
