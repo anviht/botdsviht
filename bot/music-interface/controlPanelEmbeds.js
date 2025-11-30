@@ -1,11 +1,26 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
+
+function getVersion() {
+  try {
+    const vf = path.join(process.cwd(), 'VERSION');
+    if (fs.existsSync(vf)) {
+      const v = fs.readFileSync(vf, 'utf8').trim();
+      return v ? `v-${v}` : 'v-unknown';
+    }
+  } catch (e) { /* ignore */ }
+  return 'v-unknown';
+}
 
 function createMainControlPanelEmbed() {
+  const version = getVersion();
   const embed = new EmbedBuilder()
     .setTitle('🎛️ Управление ботом Viht')
     .setColor(0x2C3E50)
     .setDescription('Выберите раздел:')
-    .setThumbnail('https://cdn-icons-png.flaticon.com/512/3556/3556097.png');
+    .setThumbnail('https://cdn-icons-png.flaticon.com/512/3556/3556097.png')
+    .setFooter({ text: `Версия: ${version}` });
   return embed;
 }
 
