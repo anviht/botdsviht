@@ -319,12 +319,23 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
             }
             
             if (stream) {
-              resource = createAudioResource(stream, { inlineVolume: true });
-              resolvedUrl = candidateUrl;
-              detail.attempts.push({ method: 'ytdl-core', ok: true });
-              attemptDetails.push(detail);
-              console.log('✅ ytdl-core SUCCESS for', candidateUrl.substring(0, 80));
-              break;
+              try {
+                // Attach error handler to stream before creating resource
+                stream.on('error', (err) => {
+                  console.warn('ytdl stream error event:', String(err && err.message || err).slice(0, 100));
+                });
+                
+                resource = createAudioResource(stream, { inlineVolume: true });
+                resolvedUrl = candidateUrl;
+                detail.attempts.push({ method: 'ytdl-core', ok: true });
+                attemptDetails.push(detail);
+                console.log('✅ ytdl-core SUCCESS for', candidateUrl.substring(0, 80));
+                break;
+              } catch (e) {
+                console.warn('ytdl-core createAudioResource failed:', String(e && e.message || e).slice(0, 100));
+                stream = null;
+                // Fall through to next quality option
+              }
             } else {
               console.warn('ytdl-core: all quality options failed for', candidateUrl.substring(0, 80));
               detail.attempts.push({ method: 'ytdl-core', ok: false, error: 'all quality options failed' });
@@ -355,10 +366,19 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
     if (resource && resource.volume) resource.volume.setVolume(state.volume || 1.0);
 
     state.player.stop();
-    state.player.play(resource);
+    try {
+      state.player.play(resource);
+    } catch (e) {
+      console.error('playNow: player.play() failed:', e && e.message);
+      if (textChannel && textChannel.send) await textChannel.send('❌ Ошибка при запуске плеера.');
+      return false;
+    }
     connection.subscribe(state.player);
     state.playing = true;
-    state.current = { url, title: url };
+    
+    // Use resolvedUrl for display (it's the actual YouTube URL we used)
+    const displayUrl = resolvedUrl && typeof resolvedUrl === 'string' ? resolvedUrl : (typeof url === 'string' ? url : 'Музыка');
+    state.current = { url: displayUrl, title: displayUrl };
 
     state.player.once(AudioPlayerStatus.Idle, async () => {
       state.playing = false;
@@ -377,12 +397,12 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
     });
 
     try {
-      if (textChannel && textChannel.send) await textChannel.send(`▶️ Запущен: ${url}`);
+      if (textChannel && textChannel.send) await textChannel.send(`▶️ Запущен: ${displayUrl}`);
       const cfg = require('../config');
       const announce = cfg.musicLogChannelId || cfg.announceChannelId || '1436487981723680930';
       const client = guild.client || (voiceChannel && voiceChannel.guild && voiceChannel.guild.client);
       if (client && announce) {
-        try { const ch = await client.channels.fetch(announce).catch(() => null); if (ch) await ch.send(`▶️ [Музыка] ${guild.name}: ${url}`); } catch (e) { /* ignore */ }
+        try { const ch = await client.channels.fetch(announce).catch(() => null); if (ch) await ch.send(`▶️ [Музыка] ${guild.name}: ${displayUrl}`); } catch (e) { /* ignore */ }
       }
     } catch (e) { /* ignore */ }
 
