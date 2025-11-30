@@ -12,9 +12,20 @@ const players = new Map();
 
 function ensureState(guildId) {
   if (!players.has(guildId)) {
+    const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
+    
+    // Add error and state change logging
+    player.on('error', (error) => {
+      console.error(`[PLAYER ${guildId}] Error:`, error && error.message ? error.message : error);
+    });
+    
+    player.on('stateChange', (oldState, newState) => {
+      console.log(`[PLAYER ${guildId}] State: ${oldState.status} -> ${newState.status}`);
+    });
+    
     players.set(guildId, {
       connection: null,
-      player: createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } }),
+      player: player,
       queue: [],
       volume: 1.0,
       playing: false,
@@ -200,17 +211,31 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
       return false;
     }
 
-      let connection = getVoiceConnection(guild.id);
-        if (!connection) {
-          connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
-          state.connection = connection;
-          try {
-            // Wait for the underlying voice connection to become ready
-            await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
-          } catch (e) {
-            console.warn('joinVoiceChannel: connection not ready', e && e.message);
-          }
-        }
+    let connection = getVoiceConnection(guild.id);
+    if (!connection) {
+      console.log('playNow: Creating new voice connection for guild', guild.id);
+      connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+      state.connection = connection;
+      try {
+        // Wait for the underlying voice connection to become ready
+        await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+        console.log('playNow: Voice connection is Ready, guild', guild.id);
+      } catch (e) {
+        console.warn('playNow: connection not ready', e && e.message);
+        if (textChannel && textChannel.send) await textChannel.send('❌ Ошибка подключения к голосовому каналу.');
+        return false;
+      }
+    } else {
+      console.log('playNow: Using existing voice connection for guild', guild.id);
+    }
+    
+    // Subscribe immediately after ensuring connection is ready
+    if (!connection.subscriptions.some(s => s === state.player)) {
+      connection.subscribe(state.player);
+      console.log('playNow: Connection subscribed to player, guild', guild.id);
+    } else {
+      console.log('playNow: Player already subscribed to connection, guild', guild.id);
+    }
 
     let resource = null;
     let resolvedUrl = null;
@@ -394,9 +419,6 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel) {
 
     if (resource && resource.volume) resource.volume.setVolume(state.volume || 1.0);
 
-    // Subscribe BEFORE playing - this is critical!
-    connection.subscribe(state.player);
-    
     state.player.stop();
     try {
       state.player.play(resource);
@@ -489,10 +511,33 @@ async function playRadio(guild, voiceChannel, radioStream, textChannel) {
       if (textChannel && textChannel.send) await textChannel.send('❌ Неверный URL радиостанции.');
       return false;
     }
+    
+    // Get or create connection
     let connection = getVoiceConnection(guild.id);
     if (!connection) {
+      console.log('playRadio: Creating new voice connection');
       connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
       state.connection = connection;
+      
+      // CRITICAL: Wait for connection to be Ready BEFORE doing anything
+      try {
+        await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+        console.log('playRadio: Voice connection is Ready');
+      } catch (e) {
+        console.error('playRadio: Connection never became Ready:', e && e.message);
+        if (textChannel && textChannel.send) await textChannel.send('❌ Ошибка подключения к голосовому каналу.');
+        return false;
+      }
+    } else {
+      console.log('playRadio: Using existing voice connection');
+    }
+
+    // Subscribe IMMEDIATELY after ensuring connection is ready
+    if (!connection.subscriptions.some(s => s === state.player)) {
+      connection.subscribe(state.player);
+      console.log('playRadio: Connection subscribed to player');
+    } else {
+      console.log('playRadio: Player already subscribed');
     }
 
     // Always use ffmpeg for radio to ensure proper codec and stability
@@ -513,13 +558,13 @@ async function playRadio(guild, voiceChannel, radioStream, textChannel) {
         maxBuffer: 10 * 1024 * 1024  // 10MB buffer
       });
 
-      // Subscribe connection immediately - before creating resource
-      connection.subscribe(state.player);
-      console.log('playRadio: Connection subscribed to player');
-
       // Log ffmpeg errors
       ff.stderr.on('data', (data) => {
         console.warn('ffmpeg stderr:', String(data).slice(0, 200));
+      });
+      
+      ff.on('error', (e) => {
+        console.error('ffmpeg process error:', e && e.message);
       });
 
       // Create audio resource from ffmpeg stdout
