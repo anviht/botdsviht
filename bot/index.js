@@ -563,24 +563,32 @@ client.once('ready', async () => {
       const msg = await controlChannel.send({ embeds: [mainEmbed], components: [controlRow] }).catch(() => null);
       if (msg && db && db.set) {
         await db.set(panelCheckKey, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: msg.id, postedAt: Date.now() });
+        // Use the same message as the music control message (single message for registration + music)
+        try { await db.set(`musicControl_${controlChannel.guild.id}`, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: msg.id }); } catch (e) { /* ignore */ }
       }
       console.log('Posted control panel to', CONTROL_PANEL_CHANNEL_ID);
-      // Ensure music-specific control panel (register button) exists in same channel
-      try { await ensureMusicControlPanel(controlChannel); } catch (e) { console.warn('ensureMusicControlPanel failed', e && e.message); }
     } else {
       // Update existing panel
       const existing = await controlChannel.messages.fetch(panelCheck.messageId).catch(() => null);
       if (existing) {
           await existing.edit({ embeds: [mainEmbed], components: [controlRow] }).catch(() => null);
         console.log('Updated existing control panel message');
+        // Ensure music control record points to this same main panel message if not set
+        try {
+          const musicKey = `musicControl_${controlChannel.guild.id}`;
+          const rec = db.get(musicKey);
+          if (!rec || !rec.messageId) {
+            await db.set(musicKey, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: existing.id });
+          }
+        } catch (e) { /* ignore */ }
       } else {
         // Message was deleted, post new one
           const msg = await controlChannel.send({ embeds: [mainEmbed], components: [controlRow] }).catch(() => null);
         if (msg && db && db.set) {
           await db.set(panelCheckKey, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: msg.id, postedAt: Date.now() });
+          try { await db.set(`musicControl_${controlChannel.guild.id}`, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: msg.id }); } catch (e) { /* ignore */ }
         }
         console.log('Reposted control panel to', CONTROL_PANEL_CHANNEL_ID);
-        try { await ensureMusicControlPanel(controlChannel); } catch (e) { console.warn('ensureMusicControlPanel failed', e && e.message); }
       }
     }
     // Periodic assurance: ensure the control panel message remains present. Run every 5 minutes.
@@ -591,7 +599,10 @@ client.once('ready', async () => {
           if (!rec || !rec.messageId) {
             // No record — post a fresh one
             const posted = await controlChannel.send({ embeds: [mainEmbed], components: [controlRow] }).catch(() => null);
-            if (posted && db && db.set) await db.set(panelCheckKey, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: posted.id, postedAt: Date.now() });
+            if (posted && db && db.set) {
+              await db.set(panelCheckKey, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: posted.id, postedAt: Date.now() });
+              try { await db.set(`musicControl_${controlChannel.guild.id}`, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: posted.id }); } catch (e) { /* ignore */ }
+            }
             console.log('[PanelCheck] Posted missing control panel message');
             return;
           }
