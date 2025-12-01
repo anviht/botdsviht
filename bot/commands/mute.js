@@ -30,7 +30,11 @@ module.exports = {
     }
 
     try {
+      // Defer reply early to avoid interaction timeout during long operations
+      await interaction.deferReply();
+
       const targetMember = await interaction.guild.members.fetch(targetId);
+      const botMember = interaction.guild.members.me || await interaction.guild.members.fetch(interaction.client.user.id);
 
       // Создать или найти muted роль
       let mutedRole = interaction.guild.roles.cache.find(r => r.name === 'Muted');
@@ -67,6 +71,25 @@ module.exports = {
         // Игнорировать
       }
 
+      // Remove existing roles that can allow sending messages — store them to restore later
+      const botHighestPos = botMember.roles.highest ? botMember.roles.highest.position : 0;
+      const removable = targetMember.roles.cache.filter(r => {
+        if (r.id === interaction.guild.id) return false; // @everyone
+        if (r.id === mutedRole.id) return false;
+        if (r.managed) return false; // don't touch integrations
+        if (!r.editable) return false; // bot cannot remove
+        // avoid removing roles higher or equal to bot
+        if (r.position >= botHighestPos) return false;
+        // avoid removing configured adminRoles
+        if (config.adminRoles && config.adminRoles.includes(r.id)) return false;
+        return true;
+      });
+
+      const removedRoleIds = removable.map(r => r.id);
+      if (removedRoleIds.length > 0) {
+        try { await targetMember.roles.remove(removedRoleIds); } catch (e) { /* ignore */ }
+      }
+
       await targetMember.roles.add(mutedRole);
 
       // Отключить из голосового канала, если пользователь был в нём (если у бота есть право перемещать участников)
@@ -88,13 +111,14 @@ module.exports = {
         // Игнорировать ошибки при отключении
       }
 
-      // Сохранить в БД
+      // Сохранить в БД (включая снятые роли для восстановления)
       const mutes = db.get('mutes') || {};
       mutes[targetId] = {
         adminId,
         reason,
         muteTime: new Date().toISOString(),
-        unmuteTime: new Date(Date.now() + duration * 60000).toISOString()
+        unmuteTime: new Date(Date.now() + duration * 60000).toISOString(),
+        removedRoles: removedRoleIds
       };
       await db.set('mutes', mutes);
 
@@ -110,7 +134,7 @@ module.exports = {
         .setThumbnail(targetUser.displayAvatarURL())
         .setTimestamp();
 
-      await interaction.reply({ embeds: [embed] });
+      await interaction.editReply({ embeds: [embed] });
 
       // Логирование
       try {
@@ -141,13 +165,22 @@ module.exports = {
       // Автоматически размутить через duration минут
       setTimeout(async () => {
         try {
-          const updatedMember = await interaction.guild.members.fetch(targetId);
+          const stored = (await db.get('mutes')) || {};
+          const entry = stored[targetId];
+          if (!entry) return;
+          const updatedMember = await interaction.guild.members.fetch(targetId).catch(() => null);
           const role = interaction.guild.roles.cache.find(r => r.name === 'Muted');
-          if (role && updatedMember.roles.cache.has(role.id)) {
-            await updatedMember.roles.remove(role);
-            delete mutes[targetId];
-            await db.set('mutes', mutes);
+          if (updatedMember && role && updatedMember.roles.cache.has(role.id)) {
+            try { await updatedMember.roles.remove(role); } catch (e) {}
+            if (entry.removedRoles && entry.removedRoles.length > 0) {
+              const toRestore = entry.removedRoles.filter(id => interaction.guild.roles.cache.has(id));
+              if (toRestore.length > 0) {
+                try { await updatedMember.roles.add(toRestore); } catch (e) {}
+              }
+            }
           }
+          delete stored[targetId];
+          await db.set('mutes', stored);
         } catch (err) {
           // Игнорировать
         }

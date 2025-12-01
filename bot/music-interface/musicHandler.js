@@ -12,7 +12,8 @@ const db = require('../libs/db');
 
 // Status channel where the bot posts who occupies the music bot
 const STATUS_CHANNEL_ID = '1441896031531827202';
-const ADMIN_ROLE_ID = '1436485697392607303';
+const config = require('../config');
+const ADMIN_ROLE_ID = (config.adminRoles && config.adminRoles.length > 0) ? config.adminRoles[0] : '1436485697392607303';
 
 // ===== HELPERS =====
 async function _getControlRecForGuild(guildId) {
@@ -211,7 +212,7 @@ async function handleMusicButton(interaction) {
         const targetOwnerId = parts[4] || null;
         // Only allow admins
         const memberObj = member || (guild ? await guild.members.fetch(user.id).catch(() => null) : null);
-        const isAdmin = memberObj && memberObj.roles && memberObj.roles.cache && memberObj.roles.cache.has(ADMIN_ROLE_ID);
+        const isAdmin = memberObj && memberObj.roles && memberObj.roles.cache && config.adminRoles && config.adminRoles.some(rid => memberObj.roles.cache.has(rid));
         if (!isAdmin) return await interaction.reply({ content: 'У вас нет прав для этой операции.', ephemeral: true });
 
         // Stop music and clear owner

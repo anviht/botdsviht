@@ -25,9 +25,16 @@ module.exports = {
         return await interaction.reply({ content: 'ℹ️ Пользователь не замучен.', ephemeral: true });
       }
 
-      await member.roles.remove(mutedRole);
-
+      // Restore previously removed roles if present in DB
       const mutes = db.get('mutes') || {};
+      const entry = mutes[targetId] || null;
+      await member.roles.remove(mutedRole).catch(() => {});
+      if (entry && entry.removedRoles && entry.removedRoles.length > 0) {
+        const toRestore = entry.removedRoles.filter(id => interaction.guild.roles.cache.has(id));
+        if (toRestore.length > 0) {
+          try { await member.roles.add(toRestore); } catch (e) { /* ignore */ }
+        }
+      }
       delete mutes[targetId];
       await db.set('mutes', mutes);
 

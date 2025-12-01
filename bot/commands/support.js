@@ -12,7 +12,8 @@ const ALLOWED_CREATOR_ROLES = [
   '1436486253066326067',
   '1436485697392607303'
 ];
-const STAFF_ROLES = [ '1436485697392607303', '1436486253066326067' ];
+const config = require('../config');
+const STAFF_ROLES = (config.adminRoles && config.adminRoles.length > 0) ? config.adminRoles : [ '1436485697392607303', '1436486253066326067' ];
 
 const supportCommand = new SlashCommandBuilder()
   .setName('support')

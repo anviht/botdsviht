@@ -14,7 +14,7 @@ const adminCommands = [
   { name: 'admfaq', emoji: '👑', ru: 'Список администраторских команд (этот список)', en: 'Admin commands list (this list)' },
 ];
 
-const ADMIN_ROLE_ID = '1436485697392607303';
+const config = require('../config');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -24,7 +24,7 @@ module.exports = {
   async execute(interaction) {
     // Check if user has admin role
     const member = interaction.member;
-    const isAdmin = member && member.roles && member.roles.cache && member.roles.cache.has(ADMIN_ROLE_ID);
+    const isAdmin = member && member.roles && member.roles.cache && config.adminRoles && config.adminRoles.some(rid => member.roles.cache.has(rid));
 
     if (!isAdmin) {
       await interaction.reply({

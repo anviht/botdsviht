@@ -155,7 +155,8 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
           }
       if (interaction.customId === 'support_close_all') {
-        const STAFF_ROLES = ['1436485697392607303','1436486253066326067'];
+        const cfgRoles = require('./config');
+        const STAFF_ROLES = (cfgRoles.adminRoles && cfgRoles.adminRoles.length > 0) ? cfgRoles.adminRoles : ['1436485697392607303','1436486253066326067'];
         const member = interaction.member; const isStaff = member && member.roles && member.roles.cache && STAFF_ROLES.some(r => member.roles.cache.has(r));
         if (!isStaff) { await safeReply(interaction, { content: 'У вас нет прав для этой операции.', ephemeral: true }); return; }
         const confirmRow = new ActionRowBuilder().addComponents(
@@ -167,7 +168,8 @@ client.on('interactionCreate', async (interaction) => {
       }
       // confirm / cancel
       if (interaction.customId === 'confirm_close_all' || interaction.customId === 'cancel_close_all') {
-        const STAFF_ROLES = ['1436485697392607303','1436486253066326067'];
+        const cfgRoles = require('./config');
+        const STAFF_ROLES = (cfgRoles.adminRoles && cfgRoles.adminRoles.length > 0) ? cfgRoles.adminRoles : ['1436485697392607303','1436486253066326067'];
         const member = interaction.member; const isStaff = member && member.roles && member.roles.cache && STAFF_ROLES.some(r => member.roles.cache.has(r));
         if (!isStaff) { await safeReply(interaction, { content: 'У вас нет прав для этой операции.', ephemeral: true }); return; }
         if (interaction.customId === 'cancel_close_all') { await safeUpdate(interaction, { content: 'Операция отменена.', components: [] }); return; }
@@ -211,7 +213,8 @@ client.on('interactionCreate', async (interaction) => {
           const subject = interaction.fields.getTextInputValue('subject').slice(0,60);
           const message = interaction.fields.getTextInputValue('message').slice(0,2000);
           const ALLOWED_CREATOR_ROLES = ['1441744621641400353','1441745037531549777','1436486915221098588','1436486486156382299','1436486253066326067','1436485697392607303'];
-          const STAFF_ROLES = ['1436485697392607303','1436486253066326067'];
+          const cfgRoles = require('./config');
+          const STAFF_ROLES = (cfgRoles.adminRoles && cfgRoles.adminRoles.length > 0) ? cfgRoles.adminRoles : ['1436485697392607303','1436486253066326067'];
           const member = interaction.member;
           const allowed = member && member.roles && member.roles.cache && ALLOWED_CREATOR_ROLES.some(r => member.roles.cache.has(r));
           if (!allowed) return await safeReply(interaction, { content: 'У вас нет роли для создания обращения.', ephemeral: true });
@@ -448,15 +451,13 @@ client.once('ready', async () => {
   } catch (e) { /* ignore */ }
   // Helper: format date/time in dd.mm.yyyy hh.mm (MSK)
   function formatDateTimeMSK(ms) {
-    const d = new Date(ms);
-    const day = String(d.getUTCDate()).padStart(2, '0');
-    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const year = d.getUTCFullYear();
-    // MSK is UTC+3
-    const mskDate = new Date(d.getTime() + 3 * 60 * 60 * 1000);
-    const hours = String(mskDate.getUTCHours()).padStart(2, '0');
-    const mins = String(mskDate.getUTCMinutes()).padStart(2, '0');
-    return { date: `${day}.${month}.${year}`, time: `${mins}.${hours}` };
+    const msk = new Date(ms + 3 * 60 * 60 * 1000);
+    const day = String(msk.getUTCDate()).padStart(2, '0');
+    const month = String(msk.getUTCMonth() + 1).padStart(2, '0');
+    const year = msk.getUTCFullYear();
+    const hours = String(msk.getUTCHours()).padStart(2, '0');
+    const mins = String(msk.getUTCMinutes()).padStart(2, '0');
+    return { date: `${day}.${month}.${year}`, time: `${hours}:${mins}` };
   }
   // Helper: get uptime in hours
   function getUptimeHours() {
@@ -468,12 +469,75 @@ client.once('ready', async () => {
     const statusChannel = await client.channels.fetch(STATUS_CHANNEL_ID).catch(() => null);
     if (statusChannel) {
       const { date, time } = formatDateTimeMSK(botStartTime);
-      await statusChannel.send(`✅ **Бот запущен:** ${date} ${time} по МСК`).catch(() => null);
+      await statusChannel.send(`✅ **Бот запущен**\n🕒 Время: ${time}\n📅 Дата: ${date} по МСК`).catch(() => null);
       console.log('Startup status report posted to', STATUS_CHANNEL_ID);
     }
   } catch (e) {
     console.warn('Failed to post startup status report:', e && e.message ? e.message : e);
   }
+  // Startup reconciliation: restore active mutes and reschedule unmute timers
+  try {
+    const mutes = db.get('mutes') || {};
+    const now = Date.now();
+    for (const [userId, entry] of Object.entries(mutes)) {
+      try {
+        const guild = client.guilds.cache.first();
+        if (!guild) continue;
+        const member = await guild.members.fetch(userId).catch(() => null);
+        if (!member) continue;
+        // Ensure Muted role exists and is present
+        let mutedRole = guild.roles.cache.find(r => r.name === 'Muted');
+        if (!mutedRole) {
+          mutedRole = await guild.roles.create({ name: 'Muted', color: '#808080', reason: 'Restore muted role on startup' }).catch(() => null);
+        }
+        if (mutedRole && !member.roles.cache.has(mutedRole.id)) {
+          try { await member.roles.add(mutedRole); } catch (e) {}
+        }
+        // Re-apply per-channel overwrites for mutated role (best-effort)
+        try {
+          const channels = await guild.channels.fetch();
+          for (const [, channel] of channels) {
+            try {
+              if (channel.isTextBased && channel.isTextBased()) {
+                await channel.permissionOverwrites.edit(mutedRole, { SendMessages: false, AddReactions: false }).catch(() => null);
+              }
+              if (channel.isVoiceBased && channel.isVoiceBased()) {
+                await channel.permissionOverwrites.edit(mutedRole, { Speak: false, Connect: false }).catch(() => null);
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
+
+        // Calculate remaining time and schedule unmute if needed
+        if (entry && entry.unmuteTime) {
+          const unmuteAt = new Date(entry.unmuteTime).getTime();
+          const ms = Math.max(0, unmuteAt - now);
+          setTimeout(async () => {
+            try {
+              const g = client.guilds.cache.first();
+              if (!g) return;
+              const m = await g.members.fetch(userId).catch(() => null);
+              if (!m) return;
+              const role = g.roles.cache.find(r => r.name === 'Muted');
+              if (role && m.roles.cache.has(role.id)) {
+                try { await m.roles.remove(role); } catch (e) {}
+                // restore removed roles if present
+                if (entry.removedRoles && entry.removedRoles.length > 0) {
+                  const toRestore = entry.removedRoles.filter(id => g.roles.cache.has(id));
+                  if (toRestore.length > 0) {
+                    try { await m.roles.add(toRestore); } catch (e) {}
+                  }
+                }
+              }
+              const current = db.get('mutes') || {};
+              delete current[userId];
+              await db.set('mutes', current);
+            } catch (e) {}
+          }, ms);
+        }
+      } catch (e) {}
+    }
+  } catch (e) { console.warn('Startup reconciliation failed', e && e.message ? e.message : e); }
   // RULES POSTING DISABLED - commented out to prevent duplicate postings
   /*
   try {

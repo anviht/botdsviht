@@ -8,10 +8,10 @@ module.exports = {
   adminOnly: true,
 
   async execute(interaction) {
-    const ADMIN_ROLE = '1436485697392607303';
+    const config = require('../config');
     try {
       const member = interaction.member;
-      if (!member || !member.roles || !member.roles.cache || !member.roles.cache.has(ADMIN_ROLE)) {
+      if (!member || !member.roles || !member.roles.cache || !config.adminRoles || !config.adminRoles.some(rid => member.roles.cache.has(rid))) {
         return await interaction.reply({ content: 'У вас нет прав для выполнения этой команды.', ephemeral: true });
       }
 

@@ -9,9 +9,9 @@ module.exports = {
 
   async execute(interaction) {
     // Only admins can use this command
-    const ADMIN_ROLE = '1436485697392607303';
+    const config = require('../config');
     const member = interaction.member || (interaction.guild ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null) : null);
-    const isAdmin = member && member.roles && member.roles.cache && member.roles.cache.has(ADMIN_ROLE);
+    const isAdmin = member && member.roles && member.roles.cache && config.adminRoles && config.adminRoles.some(rid => member.roles.cache.has(rid));
     if (!isAdmin) {
       return await interaction.reply({ content: 'У вас нет доступа к этой команде. Требуется административная роль.', ephemeral: true });
     }

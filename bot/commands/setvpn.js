@@ -11,10 +11,11 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
     try {
       // require manage guild permission or administrator OR special control role
-      const CONTROL_ROLE_ID = '1436485697392607303';
+      const config = require('../config');
+      const CONTROL_ROLE_ID = (config.adminRoles && config.adminRoles.length > 0) ? config.adminRoles[0] : '1436485697392607303';
       const perms = interaction.member && interaction.member.permissions;
       const hasPerm = perms && (perms.has(PermissionsBitField.Flags.ManageGuild) || perms.has(PermissionsBitField.Flags.Administrator));
-      const hasRole = interaction.member && interaction.member.roles && interaction.member.roles.cache && interaction.member.roles.cache.has(CONTROL_ROLE_ID);
+      const hasRole = interaction.member && interaction.member.roles && interaction.member.roles.cache && config.adminRoles && config.adminRoles.some(rid => interaction.member.roles.cache.has(rid));
       if (!hasPerm && !hasRole) {
         console.log(`[setvpn] Denied: user ${interaction.user.id} missing perms/role`);
         return await interaction.editReply('Ошибка: у вас нет прав для установки тестового IP (требуется Manage Guild, Администратор или роль создателя).');
