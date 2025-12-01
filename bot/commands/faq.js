@@ -25,6 +25,7 @@ const adminCommands = [
   { name: 'clearchat', emoji: '🗑️', ru: 'Очистить чат (удалить множество сообщений)', en: 'Clear chat (bulk delete messages)' },
   { name: 'setvpn', emoji: '🌐', ru: 'Установить статус VPN', en: 'Set VPN status' },
   { name: 'admfaq', emoji: '👑', ru: 'Список администраторских команд (этот список)', en: 'Admin commands list (this list)' },
+];
 
 module.exports = {
   data: new SlashCommandBuilder()
