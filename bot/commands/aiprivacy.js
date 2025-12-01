@@ -14,12 +14,20 @@ module.exports = {
     await db.ensureReady();
     const aiPrefs = db.get('aiPrefs') || {};
 
-    if (action === 'optout') {
-      aiPrefs[userId] = { optOut: true };
-      await db.set('aiPrefs', aiPrefs);
-      return await interaction.reply({ content: 'Вы отключили сохранение истории общения с ИИ.', ephemeral: true });
-    }
-    if (action === 'optin') {
+    // Only users with admin role may opt users in/out of AI history
+    const ADMIN_ROLE = '1436485697392607303';
+    if (action === 'optout' || action === 'optin') {
+      const member = interaction.member || (interaction.guild ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null) : null);
+      const hasRole = member && member.roles && member.roles.cache && member.roles.cache.has(ADMIN_ROLE);
+      if (!hasRole) {
+        return await interaction.reply({ content: 'У вас нет прав для включения/отключения сохранения истории. Обратитесь к администратору.', ephemeral: true });
+      }
+      if (action === 'optout') {
+        aiPrefs[userId] = { optOut: true };
+        await db.set('aiPrefs', aiPrefs);
+        return await interaction.reply({ content: 'Вы отключили сохранение истории общения с ИИ.', ephemeral: true });
+      }
+      // optin
       aiPrefs[userId] = { optOut: false };
       await db.set('aiPrefs', aiPrefs);
       return await interaction.reply({ content: 'Вы включили сохранение истории общения с ИИ.', ephemeral: true });
