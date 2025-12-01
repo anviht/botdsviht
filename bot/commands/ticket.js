@@ -8,6 +8,13 @@ module.exports = {
     .addSubcommand(s => s.setName('status').setDescription('Показать статус тикета').addStringOption(o => o.setName('id').setDescription('ID тикета').setRequired(false))),
 
   async execute(interaction) {
+    // Check admin role
+    const ADMIN_ROLE = '1436485697392607303';
+    const member = interaction.member || (interaction.guild ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null) : null);
+    if (!member || !member.roles || !member.roles.cache || !member.roles.cache.has(ADMIN_ROLE)) {
+      return await interaction.reply({ content: 'У вас нет доступа к этой команде. Требуется административная роль.', ephemeral: true });
+    }
+
     const sub = interaction.options.getSubcommand();
     await db.ensureReady();
     const tickets = db.get('tickets') || [];

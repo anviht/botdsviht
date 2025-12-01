@@ -8,6 +8,13 @@ module.exports = {
     .addStringOption(opt => opt.setName('action').setDescription('optin|optout|status').setRequired(true)),
 
   async execute(interaction) {
+    // Check admin role
+    const ADMIN_ROLE = '1436485697392607303';
+    const member = interaction.member || (interaction.guild ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null) : null);
+    if (!member || !member.roles || !member.roles.cache || !member.roles.cache.has(ADMIN_ROLE)) {
+      return await interaction.reply({ content: 'У вас нет доступа к этой команде. Требуется административная роль.', ephemeral: true });
+    }
+
     const action = interaction.options.getString('action');
     const userId = interaction.user.id;
     await db.ensureReady();
