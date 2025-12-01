@@ -1,11 +1,16 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 
-// Admin commands with descriptions
+// Admin commands with descriptions - same list as in faq.js
 const adminCommands = [
+  { name: 'ticket', emoji: '🎫', ru: 'Посмотреть статус обращения', en: 'Check ticket status' },
+  { name: 'register', emoji: '📝', ru: 'Регистрация ключей', en: 'Register keys' },
+  { name: 'role', emoji: '🎭', ru: 'Самоназначение ролей', en: 'Self-assign roles' },
+  { name: 'lang', emoji: '🌍', ru: 'Выбрать язык (RU/EN)', en: 'Choose language (RU/EN)' },
+  { name: 'onboarding', emoji: '📨', ru: 'Управление приветственными сообщениями', en: 'Manage welcome messages' },
+  { name: 'aiprivacy', emoji: '🔒', ru: 'Управление приватностью ИИ', en: 'AI privacy settings' },
+  { name: 'mstop', emoji: '⏹️', ru: 'Просмотр занятости музыкального плеера', en: 'Check music player status' },
   { name: 'clearchat', emoji: '🗑️', ru: 'Очистить чат (удалить множество сообщений)', en: 'Clear chat (bulk delete messages)' },
   { name: 'setvpn', emoji: '🌐', ru: 'Установить статус VPN', en: 'Set VPN status' },
-  { name: 'aiprivacy', emoji: '🔒', ru: 'Управление приватностью ИИ (опции: optin/optout/delete)', en: 'Manage AI privacy (optin/optout/delete)' },
-  { name: 'mstop', emoji: '⏹️', ru: 'Принудительно остановить плеер и показать его занятость', en: 'Force stop music player and view status' },
   { name: 'admfaq', emoji: '👑', ru: 'Список администраторских команд (этот список)', en: 'Admin commands list (this list)' },
 ];
 
