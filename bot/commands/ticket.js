@@ -8,10 +8,11 @@ module.exports = {
     .addSubcommand(s => s.setName('status').setDescription('Показать статус тикета').addStringOption(o => o.setName('id').setDescription('ID тикета').setRequired(false))),
 
   async execute(interaction) {
-    // Check admin role
+    // Only admins can use this command
     const ADMIN_ROLE = '1436485697392607303';
     const member = interaction.member || (interaction.guild ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null) : null);
-    if (!member || !member.roles || !member.roles.cache || !member.roles.cache.has(ADMIN_ROLE)) {
+    const isAdmin = member && member.roles && member.roles.cache && member.roles.cache.has(ADMIN_ROLE);
+    if (!isAdmin) {
       return await interaction.reply({ content: 'У вас нет доступа к этой команде. Требуется административная роль.', ephemeral: true });
     }
 
