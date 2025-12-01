@@ -27,8 +27,8 @@ module.exports = {
 
   async execute(interaction) {
     await db.ensureReady();
+    const config = require('../config');
     const sub = interaction.options.getSubcommand();
-    const ADMIN_ROLE = '1436485697392607303';
     const balances = db.get('balances') || {};
 
     if (sub === 'check') {
@@ -44,7 +44,7 @@ module.exports = {
     }
 
     // Проверка админ прав
-    const isAdmin = interaction.member.roles.cache.has(ADMIN_ROLE);
+    const isAdmin = config.adminRoles.some(rid => interaction.member.roles.cache.has(rid));
     if (!isAdmin) {
       return await interaction.reply({ content: '❌ Только администраторы могут это делать.', ephemeral: true });
     }

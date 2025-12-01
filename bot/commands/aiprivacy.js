@@ -10,9 +10,10 @@ module.exports = {
 
   async execute(interaction) {
     // Check admin role
-    const ADMIN_ROLE = '1436485697392607303';
+    const config = require('../config');
+    const isAdmin = config.adminRoles.some(rid => interaction.member.roles.cache.has(rid));
     const member = interaction.member || (interaction.guild ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null) : null);
-    if (!member || !member.roles || !member.roles.cache || !member.roles.cache.has(ADMIN_ROLE)) {
+    if (!member || !member.roles || !member.roles.cache || !isAdmin) {
       return await interaction.reply({ content: 'У вас нет доступа к этой команде. Требуется административная роль.', ephemeral: true });
     }
 
@@ -22,7 +23,7 @@ module.exports = {
     const aiPrefs = db.get('aiPrefs') || {};
 
     if (action === 'optout' || action === 'optin') {
-      const hasRole = member && member.roles && member.roles.cache && member.roles.cache.has(ADMIN_ROLE);
+      const hasRole = isAdmin;
       if (!hasRole) {
         return await interaction.reply({ content: 'У вас нет прав для включения/отключения сохранения истории. Обратитесь к администратору.', ephemeral: true });
       }
