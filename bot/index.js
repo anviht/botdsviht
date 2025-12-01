@@ -114,6 +114,20 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
+      
+      // Log command to channel 1445119290444480684
+      try {
+        const logChannelId = '1445119290444480684';
+        const logChannel = interaction.client.channels.cache.get(logChannelId);
+        if (logChannel && logChannel.isTextBased()) {
+          const user = interaction.user;
+          const commandName = interaction.commandName;
+          await logChannel.send(`${user.toString()} использовал команду /${commandName}`);
+        }
+      } catch (logErr) {
+        console.error('Failed to log command:', logErr && logErr.message ? logErr.message : logErr);
+      }
+      
       try { await command.execute(interaction); } catch (err) { console.error('Command error', err); await safeReply(interaction, { content: 'Ошибка при выполнении команды.', ephemeral: true }); }
       return;
     }
