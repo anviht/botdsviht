@@ -116,7 +116,6 @@ async function handleAiButton(interaction) {
                 } catch (e) {}
               }
             }
-          }
           } catch (e) {}
           // Send a welcome message inside thread so it appears active and the user sees it
           try {
