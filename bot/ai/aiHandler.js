@@ -48,7 +48,19 @@ async function handleAiButton(interaction) {
       // If already has an open branch
       const existing = all[userId];
       if (existing && existing.status === 'open') {
-        await replySafe({ content: `У вас уже есть ветка: ${existing.chatId}`, ephemeral: true });
+          // Ensure thread visibility is restricted to owner + control role (best-effort)
+          if (existing.threadId) {
+            try {
+              const ch = await interaction.client.channels.fetch(existing.threadId).catch(() => null);
+              if (ch) {
+                try { await ch.members.add(interaction.user.id).catch(() => null); } catch (e) {}
+                try { await ch.permissionOverwrites.edit(interaction.guild.id, { ViewChannel: false }).catch(() => null); } catch (e) {}
+                try { await ch.permissionOverwrites.edit(CONTROL_ROLE_ID, { ViewChannel: true, SendMessages: true }).catch(() => null); } catch (e) {}
+                try { await ch.permissionOverwrites.edit(interaction.user.id, { ViewChannel: true, SendMessages: true }).catch(() => null); } catch (e) {}
+              }
+            } catch (e) {}
+          }
+          await replySafe({ content: `У вас уже есть ветка: ${existing.chatId}`, ephemeral: true });
         return;
       }
 
@@ -92,7 +104,15 @@ async function handleAiButton(interaction) {
               const role = interaction.guild.roles.cache.get(CONTROL_ROLE_ID);
               if (role) {
                 const membersWithRole = interaction.guild.members.cache.filter(m => m.roles.cache.has(CONTROL_ROLE_ID));
-                for (const m of membersWithRole.values()) {
+                all[userId] = { chatId, status: 'open', createdAt: new Date().toISOString() };
+                all[userId].threadId = thread.id;
+                all[userId].threadChannel = interaction.message.channel.id;
+                // Restrict visibility: deny @everyone, allow creator and control role (best-effort)
+                try {
+                  await thread.permissionOverwrites.edit(interaction.guild.id, { ViewChannel: false }).catch(() => null);
+                } catch (e) {}
+                try { await thread.permissionOverwrites.edit(CONTROL_ROLE_ID, { ViewChannel: true, SendMessages: true }).catch(() => null); } catch (e) {}
+                try { await thread.permissionOverwrites.edit(interaction.user.id, { ViewChannel: true, SendMessages: true }).catch(() => null); } catch (e) {}
                   try { await thread.members.add(m.id).catch(() => null); } catch (e) {}
                 }
               }
