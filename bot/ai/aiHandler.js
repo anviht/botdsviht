@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelType } = require('discord.js');
 const db = require('../libs/db');
 const chatHistory = require('./chatHistory');
 
@@ -51,19 +51,35 @@ async function handleAiButton(interaction) {
       // Create a new chat id and record
       const chatId = `ai_${Date.now()}`;
       all[userId] = { chatId, status: 'open', createdAt: new Date().toISOString() };
+      // Create a private thread for user's AI chat under the same channel where button was pressed
+      try {
+        const parent = interaction.message.channel;
+        const threadName = `ai-${interaction.user.username}-${Date.now()}`;
+        const thread = await parent.threads.create({ name: threadName, autoArchiveDuration: 1440, type: ChannelType.PrivateThread }).catch(() => null);
+        if (thread) {
+          try { await thread.members.add(interaction.user.id).catch(() => null); } catch (e) {}
+          all[userId].threadId = thread.id;
+          all[userId].threadChannel = parent.id;
+        }
+      } catch (e) {
+        console.warn('Failed creating AI private thread', e && e.message ? e.message : e);
+      }
+
       await db.set('aiChats', all);
 
-      // Optionally initialize chat history store for user
-      try { chatHistory.clearHistory(userId); } catch (e) {}
+      // Initialize chat history store for user+chatId (separate key)
+      try { chatHistory.clearHistory(`${userId}:${chatId}`); } catch (e) {}
 
-      // Edit original message to show the created chat id for this user
+      // Edit original message to show the created chat id for this user and thread link
       try {
         const embed = (interaction.message.embeds && interaction.message.embeds[0]) ? EmbedBuilder.from(interaction.message.embeds[0]) : new EmbedBuilder().setTitle('🤖 Персональный ИИ');
-        embed.setDescription(summarizeForEmbed(userId, all));
+        let desc = summarizeForEmbed(userId, all);
+        if (all[userId].threadId) desc += `\nТред: <#${all[userId].threadId}>`;
+        embed.setDescription(desc);
         await interaction.message.edit({ embeds: [embed], components: makeButtons() }).catch(() => null);
       } catch (e) {}
 
-      await interaction.reply({ content: `✅ Зарегистрировано. Ваш AI Chat ID: ${chatId}`, ephemeral: true });
+      await interaction.reply({ content: `✅ Зарегистрировано. Ваш AI Chat ID: ${chatId}${all[userId].threadId ? ` — тред создан: <#${all[userId].threadId}>` : ''}`, ephemeral: true });
       return;
     }
 

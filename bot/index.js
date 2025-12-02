@@ -348,7 +348,11 @@ client.on('messageCreate', async (message) => {
   try {
     if (message.author?.bot) return;
     if (!message.channel) return;
-    if (String(message.channel.id) !== String(aiChatChannelId)) return;
+    const ch = message.channel;
+    const isThread = !!ch?.isThread && ch.isThread();
+    const isAiMain = String(ch.id) === String(aiChatChannelId);
+    const isAiThread = isThread && String(ch.parentId) === String(aiChatChannelId);
+    if (!isAiMain && !isAiThread) return;
    
     // Prevent duplicate processing
     if (processedMessages.has(message.id)) return;
@@ -409,7 +413,17 @@ client.on('messageCreate', async (message) => {
       try { message.channel.sendTyping(); } catch (e) {}
       const controlRoleId = '1436485697392607303';
       const callerIsCreator = message.member && message.member.roles && message.member.roles.cache && message.member.roles.cache.has(controlRoleId);
-      const reply = await sendPrompt(message.content, { callerIsCreator, authorId: message.author.id, authorName: message.author.username });
+      // If this message is in a private AI thread, find the aiChats record and use composite authorId (userId:chatId)
+      let authorKey = message.author.id;
+      try { await db.ensureReady(); } catch (e) {}
+      if (isAiThread) {
+        const aiChats = db.get('aiChats') || {};
+        const rec = Object.values(aiChats).find(r => r && r.threadId === ch.id);
+        if (rec && rec.chatId) {
+          authorKey = `${message.author.id}:${rec.chatId}`;
+        }
+      }
+      const reply = await sendPrompt(message.content, { callerIsCreator, authorId: authorKey, authorName: message.author.username });
       await db.incrementAi();
       const out = String(reply || '').trim();
       if (out.length > 0) {
