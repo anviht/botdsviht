@@ -3,6 +3,7 @@ const path = require('path');
 const { Client, Collection, GatewayIntentBits, Partials, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelType } = require('discord.js');
 const { token } = require('./config');
 const db = require('./libs/db');
+const achievements = require('./libs/achievements');
 
 // Ensure ffmpeg binary is available to downstream modules (ffmpeg-static provides a binary)
 try {
@@ -129,7 +130,10 @@ client.on('interactionCreate', async (interaction) => {
         console.error('Failed to log command:', logErr && logErr.message ? logErr.message : logErr);
       }
       
-      try { await command.execute(interaction); } catch (err) { console.error('Command error', err); await safeReply(interaction, { content: 'Ошибка при выполнении команды.', ephemeral: true }); }
+      try {
+        try { await achievements.checkFirstCommand(interaction.user.id, interaction); } catch (e) { /* ignore achievement errors */ }
+        await command.execute(interaction);
+      } catch (err) { console.error('Command error', err); await safeReply(interaction, { content: 'Ошибка при выполнении команды.', ephemeral: true }); }
       return;
     }
     if (interaction.isButton()) {
@@ -142,19 +146,7 @@ client.on('interactionCreate', async (interaction) => {
         try { await safeShowModal(interaction, modal); } catch (e) { console.error('showModal failed', e); await safeReply(interaction, { content: 'Не удалось открыть форму.', ephemeral: true }); }
         return;
       }
-          try {
-            // register first-command achievement when user runs any command
-            try {
-              await achievements.checkFirstCommand(interaction.user.id, interaction);
-            } catch (e) {
-              // ignore achievement errors
-            }
-
-            await command.execute(interaction);
-          } catch (error) {
-            console.error(error);
-            await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
-          }
+          // removed accidental command execution in button handler
       if (interaction.customId === 'support_close_all') {
         const cfgRoles = require('./config');
         const STAFF_ROLES = (cfgRoles.adminRoles && cfgRoles.adminRoles.length > 0) ? cfgRoles.adminRoles : ['1436485697392607303','1436486253066326067'];
