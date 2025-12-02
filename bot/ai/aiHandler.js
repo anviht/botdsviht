@@ -71,6 +71,11 @@ async function handleAiButton(interaction) {
           try { await thread.members.add(interaction.user.id).catch(() => null); } catch (e) { /* ignore */ }
           all[userId].threadId = thread.id;
           all[userId].threadChannel = interaction.message.channel.id;
+          // Send a welcome message inside thread so it appears active and the user sees it
+          try {
+            const welcome = `Привет <@${interaction.user.id}>! Это приватная ветка ИИ. Пишите здесь — бот будет отвечать в этой ветке.`;
+            await thread.send({ content: welcome }).catch(() => null);
+          } catch (e) { /* ignore */ }
         } else {
           console.warn('Thread creation failed for user', interaction.user.id);
         }
