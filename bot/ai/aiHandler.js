@@ -20,6 +20,15 @@ function summarizeForEmbed(userId, aiChats) {
   return `🔒 Ваша ветка: **${rec.chatId}**\nСтатус: **${rec.status || 'open'}**\nСоздано: ${new Date(rec.createdAt).toLocaleString()}`;
 }
 
+function createAiPanelEmbed() {
+  const embed = new EmbedBuilder()
+    .setTitle('🤖 Персональный ИИ')
+    .setColor(0x0055ff)
+    .setDescription('Нажмите кнопку ниже, чтобы создать вашу приватную ветку ИИ. Каждая ветка приватна — видите только вы и пользователи с ролью доступа.')
+    .setFooter({ text: 'Создаётся приватный тред для каждого пользователя' });
+  return embed;
+}
+
 async function handleAiButton(interaction) {
   try {
     await db.ensureReady();
@@ -182,4 +191,4 @@ async function handleAiButton(interaction) {
   }
 }
 
-module.exports = { handleAiButton };
+module.exports = { handleAiButton, createAiPanelEmbed, makeButtons };

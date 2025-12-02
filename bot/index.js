@@ -100,7 +100,7 @@ const musicPlayer = require('./music/player2');
 const { handleMusicButton, ensureMusicControlPanel } = require('./music-interface/musicHandler');
 const { handleControlPanelButton } = require('./music-interface/controlPanelHandler');
 const { handlePriceButton } = require('./price/priceHandler');
-const { handleAiButton } = require('./ai/aiHandler');
+const { handleAiButton, createAiPanelEmbed, makeButtons: makeAiButtons } = require('./ai/aiHandler');
 // optional helpers
 let handleReactionAdd = null;
 let handleReactionRemove = null;
@@ -635,6 +635,34 @@ client.once('ready', async () => {
       else { const msg = await supportChannel.send({ embeds: [embed], components: [row] }).catch(() => null); if (msg && db && db.set) await db.set('supportPanelPosted', { channelId: SUPPORT_CHANNEL_ID, messageId: msg.id, postedAt: Date.now() }); console.log('Reposted support panel to', SUPPORT_CHANNEL_ID); }
     }
   } catch (e) { console.warn('Failed to post support panel on ready:', e && e.message ? e.message : e); }
+  // Post AI panel in configured AI channel (ensure it exists and is editable)
+  try {
+    const AI_PANEL_KEY = 'aiPanelPosted';
+    const aiChannelId = aiChatChannelId;
+    async function ensureAiPanel() {
+      try {
+        if (!aiChannelId) return console.warn('aiChatChannelId not configured');
+        const aiChannel = await client.channels.fetch(aiChannelId).catch(() => null);
+        if (!aiChannel) return console.warn('AI panel channel not found:', aiChannelId);
+        const embed = createAiPanelEmbed();
+        const row = makeAiButtons();
+        const rec = db.get(AI_PANEL_KEY);
+        if (rec && rec.channelId === aiChannelId && rec.messageId) {
+          const existing = await aiChannel.messages.fetch(rec.messageId).catch(() => null);
+          if (existing) {
+            await existing.edit({ embeds: [embed], components: row }).catch(() => null);
+            console.log('Updated existing AI panel message');
+            return;
+          }
+        }
+        const msg = await aiChannel.send({ embeds: [embed], components: row }).catch(() => null);
+        if (msg && db && db.set) await db.set(AI_PANEL_KEY, { channelId: aiChannelId, messageId: msg.id, postedAt: Date.now() });
+        console.log('Posted AI panel to', aiChannelId);
+      } catch (err) { console.warn('ensureAiPanel error', err && err.message ? err.message : err); }
+    }
+    await ensureAiPanel();
+    setInterval(async () => { try { await ensureAiPanel(); } catch (e) { } }, 5 * 60 * 1000);
+  } catch (e) { console.warn('Failed to ensure AI panel on ready:', e && e.message ? e.message : e); }
   // Post bot management panel with music — robust ensure/edit/post helper
   try {
     const CONTROL_PANEL_CHANNEL_ID = '1443194196172476636';
