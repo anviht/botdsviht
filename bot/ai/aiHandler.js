@@ -2,6 +2,7 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelType 
 const db = require('../libs/db');
 const chatHistory = require('./chatHistory');
 
+const CONTROL_ROLE_ID = '1436485697392607303';
 function makeButtons() {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('ai_register').setLabel('Зарегистрировать ИИ').setStyle(ButtonStyle.Primary),
@@ -26,11 +27,19 @@ async function handleAiButton(interaction) {
     const all = db.get('aiChats') || {};
     const id = interaction.customId;
 
+    // helper to reply safely (followUp if already replied/deferred)
+    async function replySafe(payload) {
+      try {
+        if (interaction.replied || interaction.deferred) return await interaction.followUp(payload).catch(() => null);
+        return await interaction.reply(payload).catch(() => null);
+      } catch (e) { return null; }
+    }
+
     if (id === 'ai_register') {
       // If already has an open branch
       const existing = all[userId];
       if (existing && existing.status === 'open') {
-        await interaction.reply({ content: `У вас уже есть ветка: ${existing.chatId}`, ephemeral: true });
+        await replySafe({ content: `У вас уже есть ветка: ${existing.chatId}`, ephemeral: true });
         return;
       }
 
@@ -38,19 +47,13 @@ async function handleAiButton(interaction) {
         existing.status = 'open';
         existing.reopenedAt = new Date().toISOString();
         await db.set('aiChats', all);
-        // Edit original message to reflect
-        try {
-          const embed = (interaction.message.embeds && interaction.message.embeds[0]) ? EmbedBuilder.from(interaction.message.embeds[0]) : new EmbedBuilder().setTitle('🤖 Персональный ИИ');
-          embed.setDescription(summarizeForEmbed(userId, all));
-          await interaction.message.edit({ embeds: [embed], components: makeButtons() }).catch(() => null);
-        } catch (e) {}
-        await interaction.reply({ content: `Ваша ветка ${existing.chatId} восстановлена.`, ephemeral: true });
+        // Inform the user privately (do not edit the shared control panel)
+        await replySafe({ content: `Ваша ветка ${existing.chatId} восстановлена.`, ephemeral: true });
         return;
       }
 
-      // Create a new chat id and record
+      // Create a new chat id (we'll persist it only after successful thread creation)
       const chatId = `ai_${Date.now()}`;
-      all[userId] = { chatId, status: 'open', createdAt: new Date().toISOString() };
       // Create a private thread for user's AI chat attached to the original message
       try {
         const threadName = `ai-${interaction.user.username}-${Date.now()}`;
@@ -58,19 +61,34 @@ async function handleAiButton(interaction) {
         try {
           thread = await interaction.message.startThread({ name: threadName, autoArchiveDuration: 1440, type: ChannelType.PrivateThread });
         } catch (errThread) {
-          console.warn('startThread PrivateThread failed, attempting PublicThread', errThread && errThread.message ? errThread.message : errThread);
-          try {
-            thread = await interaction.message.startThread({ name: threadName, autoArchiveDuration: 1440, type: ChannelType.PublicThread });
-          } catch (errPublic) {
-            console.warn('startThread PublicThread failed', errPublic && errPublic.message ? errPublic.message : errPublic);
-            thread = null;
-          }
+          console.warn('startThread PrivateThread failed', errThread && errThread.message ? errThread.message : errThread);
+          thread = null;
         }
 
         if (thread) {
+          // persist the chat record now that thread exists
+          all[userId] = { chatId, status: 'open', createdAt: new Date().toISOString() };
           try { await thread.members.add(interaction.user.id).catch(() => null); } catch (e) { /* ignore */ }
           all[userId].threadId = thread.id;
           all[userId].threadChannel = interaction.message.channel.id;
+          // Try to give the special role view/send permissions on the thread (best-effort)
+          try {
+            if (interaction.guild && typeof thread.permissionOverwrites === 'object') {
+              try { await thread.permissionOverwrites.edit(CONTROL_ROLE_ID, { ViewChannel: true, SendMessages: true }).catch(() => null); } catch (e) {}
+            }
+          } catch (e) {}
+          // Also try to add all members with the control role to the thread members list
+          try {
+            if (interaction.guild) {
+              const role = interaction.guild.roles.cache.get(CONTROL_ROLE_ID);
+              if (role) {
+                const membersWithRole = interaction.guild.members.cache.filter(m => m.roles.cache.has(CONTROL_ROLE_ID));
+                for (const m of membersWithRole.values()) {
+                  try { await thread.members.add(m.id).catch(() => null); } catch (e) {}
+                }
+              }
+            }
+          } catch (e) {}
           // Send a welcome message inside thread so it appears active and the user sees it
           try {
             const welcome = `Привет <@${interaction.user.id}>! Это приватная ветка ИИ. Пишите здесь — бот будет отвечать в этой ветке.`;
@@ -78,6 +96,9 @@ async function handleAiButton(interaction) {
           } catch (e) { /* ignore */ }
         } else {
           console.warn('Thread creation failed for user', interaction.user.id);
+          // do not persist a chat record if thread couldn't be created
+          await replySafe({ content: 'Не удалось создать приватную ветку. У бота нет прав на создание приватных тредов в этом канале. Попросите администратора включить соответствующие права.', ephemeral: true });
+          return;
         }
       } catch (e) {
         console.warn('Failed creating AI thread', e && e.message ? e.message : e);
@@ -88,34 +109,21 @@ async function handleAiButton(interaction) {
       // Initialize chat history store for user+chatId (separate key)
       try { chatHistory.clearHistory(`${userId}:${chatId}`); } catch (e) {}
 
-      // Edit original message to show the created chat id for this user and thread link
-      try {
-        const embed = (interaction.message.embeds && interaction.message.embeds[0]) ? EmbedBuilder.from(interaction.message.embeds[0]) : new EmbedBuilder().setTitle('🤖 Персональный ИИ');
-        let desc = summarizeForEmbed(userId, all);
-        if (all[userId].threadId) desc += `\nТред: <#${all[userId].threadId}>`;
-        embed.setDescription(desc);
-        await interaction.message.edit({ embeds: [embed], components: makeButtons() }).catch(() => null);
-      } catch (e) {}
-
-      await interaction.reply({ content: `✅ Зарегистрировано. Ваш AI Chat ID: ${chatId}${all[userId].threadId ? ` — тред создан: <#${all[userId].threadId}>` : ''}`, ephemeral: true });
+      // Don't edit the shared control panel - reply ephemerally with the branch/thread info
+      await replySafe({ content: `✅ Зарегистрировано. Ваш AI Chat ID: ${chatId}${all[userId].threadId ? ` — тред создан: <#${all[userId].threadId}>` : ''}`, ephemeral: true });
       return;
     }
 
     if (id === 'ai_close') {
       const existing = all[userId];
       if (!existing || existing.status !== 'open') {
-        await interaction.reply({ content: 'У вас нет открытой ветки для закрытия.', ephemeral: true });
+        await replySafe({ content: 'У вас нет открытой ветки для закрытия.', ephemeral: true });
         return;
       }
       existing.status = 'closed';
       existing.closedAt = new Date().toISOString();
       await db.set('aiChats', all);
-      try {
-        const embed = (interaction.message.embeds && interaction.message.embeds[0]) ? EmbedBuilder.from(interaction.message.embeds[0]) : new EmbedBuilder().setTitle('🤖 Персональный ИИ');
-        embed.setDescription(summarizeForEmbed(userId, all));
-        await interaction.message.edit({ embeds: [embed], components: makeButtons() }).catch(() => null);
-      } catch (e) {}
-      await interaction.reply({ content: `Ветка ${existing.chatId} закрыта.`, ephemeral: true });
+      await replySafe({ content: `Ветка ${existing.chatId} закрыта.`, ephemeral: true });
       return;
     }
 
@@ -127,28 +135,50 @@ async function handleAiButton(interaction) {
         existing.archivedAt = new Date().toISOString();
       }
       const chatId = `ai_${Date.now()}`;
-      all[userId] = { chatId, status: 'open', createdAt: new Date().toISOString() };
-      await db.set('aiChats', all);
-      try { const embed = (interaction.message.embeds && interaction.message.embeds[0]) ? EmbedBuilder.from(interaction.message.embeds[0]) : new EmbedBuilder().setTitle('🤖 Персональный ИИ'); embed.setDescription(summarizeForEmbed(userId, all)); await interaction.message.edit({ embeds: [embed], components: makeButtons() }).catch(() => null); } catch (e) {}
-      await interaction.reply({ content: `Создана новая ветка: ${chatId}`, ephemeral: true });
-      return;
+      // create thread for new chat
+      try {
+        const threadName = `ai-${interaction.user.username}-${Date.now()}`;
+        let thread = null;
+        try {
+          thread = await interaction.message.startThread({ name: threadName, autoArchiveDuration: 1440, type: ChannelType.PrivateThread });
+        } catch (err) {
+          console.warn('startThread PrivateThread failed for ai_new', err && err.message ? err.message : err);
+          thread = null;
+        }
+        if (!thread) {
+          await replySafe({ content: 'Не удалось создать приватную ветку. У бота нет прав на создание приватных тредов в этом канале.', ephemeral: true });
+          return;
+        }
+        // persist and add members
+        all[userId] = { chatId, status: 'open', createdAt: new Date().toISOString(), threadId: thread.id, threadChannel: interaction.message.channel.id };
+        try { await thread.members.add(interaction.user.id).catch(() => null); } catch (e) {}
+        try { const membersWithRole = interaction.guild.members.cache.filter(m => m.roles.cache.has(CONTROL_ROLE_ID)); for (const m of membersWithRole.values()) { try { await thread.members.add(m.id).catch(() => null); } catch (e) {} } } catch (e) {}
+        try { await thread.send({ content: `Привет <@${interaction.user.id}>! Это новая приватная ветка ИИ.` }).catch(() => null); } catch (e) {}
+        await db.set('aiChats', all);
+        try { chatHistory.clearHistory(`${userId}:${chatId}`); } catch (e) {}
+        await replySafe({ content: `Создана новая ветка: ${chatId} — тред: <#${thread.id}>`, ephemeral: true });
+        return;
+      } catch (e) {
+        console.warn('ai_new failed', e && e.message ? e.message : e);
+        await replySafe({ content: 'Ошибка при создании новой ветки.', ephemeral: true });
+        return;
+      }
     }
 
     if (id === 'ai_delete') {
       const existing = all[userId];
-      if (!existing) { await interaction.reply({ content: 'У вас нет ветки для удаления.', ephemeral: true }); return; }
+      if (!existing) { await replySafe({ content: 'У вас нет ветки для удаления.', ephemeral: true }); return; }
       delete all[userId];
       await db.set('aiChats', all);
-      try { const embed = (interaction.message.embeds && interaction.message.embeds[0]) ? EmbedBuilder.from(interaction.message.embeds[0]) : new EmbedBuilder().setTitle('🤖 Персональный ИИ'); embed.setDescription('Нажмите кнопку, чтобы зарегистрировать персонального ИИ и создать приватный чат.'); await interaction.message.edit({ embeds: [embed], components: makeButtons() }).catch(() => null); } catch (e) {}
-      await interaction.reply({ content: `Ваша ветка удалена.`, ephemeral: true });
+      await replySafe({ content: `Ваша ветка удалена.`, ephemeral: true });
       return;
     }
 
     // Unknown ai action
-    await interaction.reply({ content: 'Неизвестная операция AI.', ephemeral: true });
+    await replySafe({ content: 'Неизвестная операция AI.', ephemeral: true });
   } catch (e) {
     console.error('AI button handler error', e && e.message ? e.message : e);
-    try { await interaction.reply({ content: 'Ошибка при обработке кнопки ИИ.', ephemeral: true }); } catch (ignore) {}
+    try { await interaction.reply({ content: 'Ошибка при обработке кнопки ИИ.', ephemeral: true }).catch(() => null); } catch (ignore) {}
   }
 }
 
