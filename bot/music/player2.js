@@ -814,6 +814,13 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
     const displayTitle = resolvedTitle || (resolvedUrl && typeof resolvedUrl === 'string' ? resolvedUrl : (typeof url === 'string' ? url : 'Музыка'));
     state.current = { url: resolvedUrl || (typeof url === 'string' ? url : null), title: displayTitle, owner: userId ? String(userId) : null, type: 'music' };
 
+    // Сохранить в историю и как последний трек
+    try {
+      await addToHistory(guild.id, userId || 'unknown', state.current);
+      await saveLastTrack(guild.id, state.current);
+      if (userId) await unlockAchievement(userId, 'played_music');
+    } catch (e) { /* ignore */ }
+
     // Short-play monitor: if playback stops/pauses within MIN_GOOD_PLAY_MS, consider it a failure and retry
     try {
       const MIN_GOOD_PLAY_MS = parseInt(process.env.MIN_GOOD_PLAY_MS || '5000', 10) || 5000;
@@ -1160,4 +1167,236 @@ async function playRadio(guild, voiceChannel, radioStream, textChannel, userId) 
   } catch (e) { console.error('playRadio error', e && e.message); if (textChannel && textChannel.send) await textChannel.send('❌ Ошибка при воспроизведении радио.'); return false; }
 }
 
-module.exports = { playNow, playRadio, addToQueue, stop, skip, isPlaying, changeVolume, findYouTubeUrl };
+// ==================== ИСТОРИЯ, ИЗБРАННОЕ, ПЛЕЙЛИСТЫ ====================
+
+// Добавить трек в историю
+async function addToHistory(guildId, userId, trackData) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    music.history = music.history || {};
+    const key = `${guildId}_${userId}`;
+    music.history[key] = music.history[key] || [];
+    // Последние 20 треков
+    music.history[key].unshift({ ...trackData, timestamp: Date.now() });
+    music.history[key] = music.history[key].slice(0, 20);
+    await db.set('music', music);
+  } catch (e) { console.warn('addToHistory failed', e && e.message); }
+}
+
+// Получить историю
+async function getHistory(guildId, userId) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    const key = `${guildId}_${userId}`;
+    return (music.history && music.history[key]) || [];
+  } catch (e) { return []; }
+}
+
+// Добавить в избранное
+async function addToFavorites(guildId, userId, trackData) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    music.favorites = music.favorites || {};
+    const key = `${guildId}_${userId}`;
+    music.favorites[key] = music.favorites[key] || [];
+    // Избегаем дубликатов по URL
+    if (!music.favorites[key].some(t => t.url === trackData.url)) {
+      music.favorites[key].push({ ...trackData, addedAt: Date.now() });
+    }
+    await db.set('music', music);
+    return true;
+  } catch (e) { console.warn('addToFavorites failed', e && e.message); return false; }
+}
+
+// Получить избранное
+function getFavorites(guildId, userId) {
+  try {
+    const music = db.get('music') || {};
+    const key = `${guildId}_${userId}`;
+    return (music.favorites && music.favorites[key]) || [];
+  } catch (e) { return []; }
+}
+
+// Удалить из избранного
+async function removeFromFavorites(guildId, userId, trackUrl) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    const key = `${guildId}_${userId}`;
+    if (music.favorites && music.favorites[key]) {
+      music.favorites[key] = music.favorites[key].filter(t => t.url !== trackUrl);
+      await db.set('music', music);
+      return true;
+    }
+    return false;
+  } catch (e) { console.warn('removeFromFavorites failed', e && e.message); return false; }
+}
+
+// Создать плейлист
+async function createPlaylist(guildId, userId, playlistName) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    music.playlists = music.playlists || {};
+    const key = `${guildId}_${userId}`;
+    music.playlists[key] = music.playlists[key] || {};
+    
+    const id = `pl_${Date.now()}`;
+    music.playlists[key][id] = { name: playlistName, tracks: [], createdAt: Date.now() };
+    await db.set('music', music);
+    return id;
+  } catch (e) { console.warn('createPlaylist failed', e && e.message); return null; }
+}
+
+// Добавить трек в плейлист
+async function addTrackToPlaylist(guildId, userId, playlistId, trackData) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    const key = `${guildId}_${userId}`;
+    if (music.playlists && music.playlists[key] && music.playlists[key][playlistId]) {
+      // Максимум 100 треков в плейлисте
+      if ((music.playlists[key][playlistId].tracks || []).length < 100) {
+        music.playlists[key][playlistId].tracks = music.playlists[key][playlistId].tracks || [];
+        if (!music.playlists[key][playlistId].tracks.some(t => t.url === trackData.url)) {
+          music.playlists[key][playlistId].tracks.push(trackData);
+        }
+        await db.set('music', music);
+        return true;
+      }
+    }
+    return false;
+  } catch (e) { console.warn('addTrackToPlaylist failed', e && e.message); return false; }
+}
+
+// Получить плейлисты пользователя
+function getPlaylists(guildId, userId) {
+  try {
+    const music = db.get('music') || {};
+    const key = `${guildId}_${userId}`;
+    return (music.playlists && music.playlists[key]) || {};
+  } catch (e) { return {}; }
+}
+
+// Удалить плейлист
+async function deletePlaylist(guildId, userId, playlistId) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    const key = `${guildId}_${userId}`;
+    if (music.playlists && music.playlists[key] && music.playlists[key][playlistId]) {
+      delete music.playlists[key][playlistId];
+      await db.set('music', music);
+      return true;
+    }
+    return false;
+  } catch (e) { console.warn('deletePlaylist failed', e && e.message); return false; }
+}
+
+// Удалить трек из плейлиста
+async function removeTrackFromPlaylist(guildId, userId, playlistId, trackUrl) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    const key = `${guildId}_${userId}`;
+    if (music.playlists && music.playlists[key] && music.playlists[key][playlistId]) {
+      music.playlists[key][playlistId].tracks = (music.playlists[key][playlistId].tracks || []).filter(t => t.url !== trackUrl);
+      await db.set('music', music);
+      return true;
+    }
+    return false;
+  } catch (e) { console.warn('removeTrackFromPlaylist failed', e && e.message); return false; }
+}
+
+// Получить последний трек для восстановления
+function getLastTrack(guildId) {
+  try {
+    const music = db.get('music') || {};
+    music.lastTracks = music.lastTracks || {};
+    return music.lastTracks[guildId] || null;
+  } catch (e) { return null; }
+}
+
+// Сохранить последний трек
+async function saveLastTrack(guildId, trackData) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    music.lastTracks = music.lastTracks || {};
+    music.lastTracks[guildId] = trackData;
+    await db.set('music', music);
+  } catch (e) { console.warn('saveLastTrack failed', e && e.message); }
+}
+
+// Улучшенный поиск с фильтрацией
+async function enhancedSearch(query, options = {}) {
+  try {
+    const { artist = null, album = null, year = null } = options;
+    let r = await yts(query);
+    let vids = r && r.videos ? r.videos.filter(v => !v.live && v.seconds > 0) : [];
+    
+    // Фильтр по году если указан
+    if (year && vids.length > 0) {
+      vids = vids.filter(v => {
+        const vidYear = v.ago ? new Date(v.ago).getFullYear() : null;
+        return !vidYear || vidYear === parseInt(year);
+      });
+    }
+    
+    // Фильтр по названию артиста в результатах
+    if (artist && vids.length > 0) {
+      vids = vids.filter(v => (v.author && v.author.name) ? v.author.name.toLowerCase().includes(artist.toLowerCase()) : true);
+    }
+    
+    return vids.map(v => ({ url: v.url, title: v.title, author: v.author && v.author.name ? v.author.name : 'Unknown' }));
+  } catch (e) { 
+    console.warn('enhancedSearch failed', e && e.message);
+    return [];
+  }
+}
+
+// Получить рекомендации (похожие видео)
+async function getRecommendations(query, limit = 5) {
+  try {
+    const r = await yts(`${query} mix similar`);
+    const vids = r && r.videos ? r.videos.filter(v => !v.live && v.seconds > 0) : [];
+    return vids.slice(0, limit).map(v => ({ url: v.url, title: v.title }));
+  } catch (e) {
+    console.warn('getRecommendations failed', e && e.message);
+    return [];
+  }
+}
+
+// Увеличить достижение
+async function unlockAchievement(userId, achievementKey) {
+  try {
+    await db.ensureReady();
+    const achievements = db.get('achievements') || {};
+    achievements[userId] = achievements[userId] || {};
+    if (!achievements[userId][achievementKey]) {
+      achievements[userId][achievementKey] = { unlockedAt: Date.now(), count: 1 };
+    } else {
+      achievements[userId][achievementKey].count = (achievements[userId][achievementKey].count || 1) + 1;
+    }
+    await db.set('achievements', achievements);
+  } catch (e) { console.warn('unlockAchievement failed', e && e.message); }
+}
+
+// Получить достижения
+function getAchievements(userId) {
+  try {
+    const achievements = db.get('achievements') || {};
+    return achievements[userId] || {};
+  } catch (e) { return {}; }
+}
+
+module.exports = { 
+  playNow, playRadio, addToQueue, stop, skip, isPlaying, changeVolume, findYouTubeUrl,
+  addToHistory, getHistory, addToFavorites, getFavorites, removeFromFavorites,
+  createPlaylist, addTrackToPlaylist, getPlaylists, deletePlaylist, removeTrackFromPlaylist,
+  getLastTrack, saveLastTrack, enhancedSearch, getRecommendations,
+  unlockAchievement, getAchievements
+};

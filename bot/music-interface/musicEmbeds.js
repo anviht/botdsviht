@@ -43,9 +43,77 @@ function createPlayerControlsEmbed(radioLabel) {
   return embed;
 }
 
+function createNowPlayingWithProgressEmbed(title, currentTime, duration, artist = 'Unknown') {
+  const percent = Math.round((currentTime / duration) * 100);
+  const filled = Math.round(percent / 5);
+  const empty = 20 - filled;
+  const progressBar = '█'.repeat(filled) + '░'.repeat(empty);
+  
+  const embed = new EmbedBuilder()
+    .setTitle('🎵 Сейчас играет')
+    .setColor(0x4CAF50)
+    .setDescription(`**${title}**`)
+    .addFields(
+      { name: 'Исполнитель', value: artist, inline: true },
+      { name: 'Прогресс', value: `${progressBar}\n${formatTime(currentTime)} / ${formatTime(duration)}`, inline: false }
+    );
+  return embed;
+}
+
+function createHistoryEmbed(tracks) {
+  const embed = new EmbedBuilder()
+    .setTitle('📜 История воспроизведения')
+    .setColor(0x2196F3)
+    .setDescription(tracks.length > 0 ? 'Последние треки:' : 'История пуста');
+  
+  if (tracks.length > 0) {
+    const desc = tracks.slice(0, 10).map((t, i) => `${i+1}. ${t.title || 'Неизвестно'}`).join('\n');
+    embed.setDescription(desc);
+  }
+  return embed;
+}
+
+function createFavoritesEmbed(tracks) {
+  const embed = new EmbedBuilder()
+    .setTitle('❤️ Избранное')
+    .setColor(0xFF1744)
+    .setDescription(tracks.length > 0 ? 'Ваши любимые треки:' : 'Избранное пусто');
+  
+  if (tracks.length > 0) {
+    const desc = tracks.slice(0, 10).map((t, i) => `${i+1}. ${t.title || 'Неизвестно'}`).join('\n');
+    embed.setDescription(desc);
+  }
+  return embed;
+}
+
+function createPlaylistsEmbed(playlists) {
+  const embed = new EmbedBuilder()
+    .setTitle('📋 Мои плейлисты')
+    .setColor(0x673AB7)
+    .setDescription(Object.keys(playlists).length > 0 ? 'Ваши плейлисты:' : 'Плейлистов нет');
+  
+  if (Object.keys(playlists).length > 0) {
+    const names = Object.entries(playlists).map(([id, pl]) => `• ${pl.name} (${(pl.tracks || []).length} треков)`).join('\n');
+    embed.addFields({ name: 'Плейлисты', value: names });
+  }
+  return embed;
+}
+
+function formatTime(ms) {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+}
+
 module.exports = {
   createMusicMenuEmbed,
   createRadioListEmbed,
   createNowPlayingEmbed,
-  createPlayerControlsEmbed
+  createPlayerControlsEmbed,
+  createNowPlayingWithProgressEmbed,
+  createHistoryEmbed,
+  createFavoritesEmbed,
+  createPlaylistsEmbed,
+  formatTime
 };

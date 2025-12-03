@@ -170,6 +170,92 @@ client.on('interactionCreate', async (interaction) => {
         try { await handleMusicButton(interaction); } catch (err) { console.error('Music button error', err); await safeReply(interaction, { content: 'Ошибка при обработке кнопки музыки.', ephemeral: true }); }
         return;
       }
+      // Profile buttons
+      if (interaction.customId === 'profile_music_stats') {
+        try {
+          const musicEmbeds = require('./music-interface/musicEmbeds');
+          const music = db.get('music') || {};
+          const userId = interaction.user.id;
+          const guildId = interaction.guildId;
+          const historyTracks = (music.history && music.history[`${guildId}_${userId}`]) || [];
+          const favTracks = (music.favorites && music.favorites[`${guildId}_${userId}`]) || [];
+          const playlists = (music.playlists && music.playlists[`${guildId}_${userId}`]) || {};
+          
+          const embed = musicEmbeds.createPlaylistsEmbed(playlists);
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('profile_show_history').setLabel('История').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('profile_show_favorites').setLabel('Избранное').setStyle(ButtonStyle.Secondary)
+          );
+          await safeReply(interaction, { embeds: [embed], components: [row], ephemeral: true });
+        } catch (err) {
+          console.error('Profile music stats error', err);
+          await safeReply(interaction, { content: 'Ошибка при загрузке статистики музыки.', ephemeral: true });
+        }
+        return;
+      }
+      if (interaction.customId === 'profile_show_history') {
+        try {
+          const musicEmbeds = require('./music-interface/musicEmbeds');
+          const music = db.get('music') || {};
+          const userId = interaction.user.id;
+          const guildId = interaction.guildId;
+          const historyTracks = (music.history && music.history[`${guildId}_${userId}`]) || [];
+          
+          const embed = musicEmbeds.createHistoryEmbed(historyTracks);
+          await safeUpdate(interaction, { embeds: [embed] });
+        } catch (err) {
+          console.error('Profile history error', err);
+          await safeReply(interaction, { content: 'Ошибка при загрузке истории.', ephemeral: true });
+        }
+        return;
+      }
+      if (interaction.customId === 'profile_show_favorites') {
+        try {
+          const musicEmbeds = require('./music-interface/musicEmbeds');
+          const music = db.get('music') || {};
+          const userId = interaction.user.id;
+          const guildId = interaction.guildId;
+          const favTracks = (music.favorites && music.favorites[`${guildId}_${userId}`]) || [];
+          
+          const embed = musicEmbeds.createFavoritesEmbed(favTracks);
+          await safeUpdate(interaction, { embeds: [embed] });
+        } catch (err) {
+          console.error('Profile favorites error', err);
+          await safeReply(interaction, { content: 'Ошибка при загрузке избранного.', ephemeral: true });
+        }
+        return;
+      }
+      if (interaction.customId === 'profile_achievements') {
+        try {
+          const achievements = musicPlayer.getAchievements(interaction.user.id);
+          const achievementList = Object.entries(achievements).map(([name, data]) => {
+            return `**${name}**: ${data.count || 0} (разблокировано: ${data.unlockedAt || '—'})`;
+          }).join('\n') || 'Нет достижений';
+          
+          const embed = new EmbedBuilder()
+            .setTitle(`🏆 Достижения — ${interaction.user.username}`)
+            .setDescription(achievementList)
+            .setColor(0xFFD700)
+            .setFooter({ text: 'Заработайте достижения, используя различные функции бота!' });
+          
+          await safeReply(interaction, { embeds: [embed], ephemeral: true });
+        } catch (err) {
+          console.error('Profile achievements error', err);
+          await safeReply(interaction, { content: 'Ошибка при загрузке достижений.', ephemeral: true });
+        }
+        return;
+      }
+      // DM Menu buttons
+      if (interaction.customId && interaction.customId.startsWith('dm_menu_')) {
+        try {
+          const dmMenu = require('./dm-menu');
+          await dmMenu.handleDMMenuButton(interaction);
+        } catch (err) {
+          console.error('DM menu button error', err);
+          await safeReply(interaction, { content: 'Ошибка при обработке меню.', ephemeral: true });
+        }
+        return;
+      }
       // Music search button selection
       if (interaction.customId && interaction.customId.startsWith('music_search_btn_')) {
         try {
@@ -585,6 +671,34 @@ client.on('messageDelete', async (message) => {
 })();
 if (handleReactionAdd) client.on('messageReactionAdd', async (reaction, user) => { try { await handleReactionAdd(reaction, user); } catch (e) { console.error('messageReactionAdd handler:', e); } });
 if (handleReactionRemove) client.on('messageReactionRemove', async (reaction, user) => { try { await handleReactionRemove(reaction, user); } catch (e) { console.error('messageReactionRemove handler:', e); } });
+// Guild member join event — create DM menu for new members
+client.on('guildMemberAdd', async (member) => {
+  try {
+    const dmMenu = require('./dm-menu');
+    await dmMenu.createUserMenu(client, member.id, member.guild.id);
+  } catch (err) {
+    console.error('guildMemberAdd DM menu error:', err.message);
+  }
+});
+// Hourly cleanup task for DM menus
+setInterval(async () => {
+  try {
+    const dmMenu = require('./dm-menu');
+    // Get all bot guilds and iterate through members to cleanup their DM messages
+    for (const guild of client.guilds.cache.values()) {
+      const members = await guild.members.fetch({ limit: 100 }).catch(() => null);
+      if (!members) continue;
+      for (const member of members.values()) {
+        if (member.user.bot) continue;
+        await dmMenu.cleanupOldMenuMessages(member.user, client).catch(() => {});
+        // Small delay to avoid rate limits
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
+  } catch (err) {
+    console.error('Hourly DM cleanup error:', err.message);
+  }
+}, 3600000); // 1 hour = 3600000 ms
 // AI chat handler
 const { aiChatChannelId } = require('./config');
 const COOLDOWN_MS = 3000;
