@@ -247,7 +247,8 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
     }
-    if (interaction.isButton()) {
+    if (interaction.isModalSubmit()) {
+      // Handle support creation modal submission
       if (interaction.customId === 'support_modal') {
         try {
           const subject = interaction.fields.getTextInputValue('subject').slice(0,60);
