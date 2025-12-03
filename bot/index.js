@@ -35,56 +35,15 @@ const { messageContentIntent, guildMembersIntent } = require('./config');
 if (messageContentIntent) intentsList.push(GatewayIntentBits.MessageContent);
 if (guildMembersIntent) intentsList.push(GatewayIntentBits.GuildMembers);
 const client = new Client({ intents: intentsList, partials: [Partials.Message, Partials.Channel, Partials.Reaction] });
-// Helper wrappers to make interaction replies/upates more resilient and to use flags for ephemeral
-async function safeReply(interaction, options) {
-  try {
-    const payload = (typeof options === 'string') ? { content: options } : { ...options };
-    if (payload.ephemeral) { payload.flags = 64; delete payload.ephemeral; }
-    if (interaction.replied || interaction.deferred) {
-      try {
-        if (typeof payload.content === 'string') await interaction.editReply({ content: payload.content });
-        else await interaction.editReply(payload);
-      } catch (e) {
-        try { await interaction.followUp(payload); } catch (e2) { console.error('safeReply followUp failed', e2); }
-      }
-    } else {
-      await interaction.reply(payload);
-    }
-  } catch (e) {
-    if (e && e.code === 10062) return; // Unknown interaction — ignore
-    console.error('safeReply error', e && e.message ? e.message : e);
-  }
-}
-async function safeUpdate(interaction, options) {
-  try {
-    const payload = (typeof options === 'string') ? { content: options } : { ...options };
-    if (payload.ephemeral) { payload.flags = 64; delete payload.ephemeral; }
-    await interaction.update(payload);
-  } catch (e) {
-    if (e && e.code === 10062) return; // Unknown interaction
-    console.error('safeUpdate error', e && e.message ? e.message : e);
-  }
-}
-async function safeShowModal(interaction, modal, attempts = 2) {
-  let attempt = 0;
-  while (attempt <= attempts) {
-    attempt += 1;
-    try {
-      await interaction.showModal(modal);
-      return;
-    } catch (e) {
-      // Undici connect timeout or transient network — retry a couple times
-      if (e && e.code === 'UND_ERR_CONNECT_TIMEOUT' && attempt <= attempts) {
-        await new Promise(r => setTimeout(r, 500 * attempt));
-        continue;
-      }
-      console.error('showModal failed', e && e.message ? e.message : e);
-      // fallback: reply to user that the form couldn't be opened
-      try { await safeReply(interaction, { content: 'Не удалось открыть форму.', ephemeral: true }); } catch (ignore) {}
-      return;
-    }
-  }
-}
+// Global error handlers to capture runtime issues
+process.on('unhandledRejection', (reason, p) => {
+  console.error('Unhandled Rejection at:', p, 'reason:', reason && reason.stack ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err && err.stack ? err.stack : err);
+});
+// Use centralized interaction helpers
+const { safeReply, safeUpdate, safeShowModal } = require('./libs/interactionUtils');
 // load commands
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
@@ -113,6 +72,8 @@ try { const { initAutomod } = require('./moderation/automod'); initAutomod(clien
 // Interaction handler: commands, buttons, modals
 client.on('interactionCreate', async (interaction) => {
   try {
+    // attach helpers to interaction for commands to use if desired
+    try { interaction.safeReply = (opts) => safeReply(interaction, opts); interaction.safeUpdate = (opts) => safeUpdate(interaction, opts); interaction.safeShowModal = (modal) => safeShowModal(interaction, modal); } catch (e) {}
     if (interaction.isCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
@@ -481,8 +442,13 @@ client.once('ready', async () => {
     const statusChannel = await client.channels.fetch(STATUS_CHANNEL_ID).catch(() => null);
     if (statusChannel) {
       const { date, time } = formatDateTimeMSK(botStartTime);
-      await statusChannel.send(`✅ **Бот запущен**\n🕒 Время: ${time}\n📅 Дата: ${date} по МСК`).catch(() => null);
-      console.log('Startup status report posted to', STATUS_CHANNEL_ID);
+      let version = 'unknown';
+      try { version = (fs.readFileSync(path.join(__dirname, '..', 'VERSION'), 'utf-8') || '').trim() || version; } catch (e) {}
+      let gitSha = 'unknown';
+      try { const { execSync } = require('child_process'); gitSha = String(execSync('git rev-parse --short HEAD', { cwd: path.join(__dirname, '..'), timeout: 2000 })).trim(); } catch (e) {}
+      const msg = `✅ **Бот запущен**\n🕒 Время: ${time}\n📅 Дата: ${date} по МСК\n🔖 Версия: ${version}\n🔁 Commit: ${gitSha}`;
+      await statusChannel.send(msg).catch(() => null);
+      console.log('Startup status report posted to', STATUS_CHANNEL_ID, 'version', version, 'commit', gitSha);
     }
   } catch (e) {
     console.warn('Failed to post startup status report:', e && e.message ? e.message : e);

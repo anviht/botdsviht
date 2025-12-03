@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node bot/index.js",
     "start:dev": "nodemon bot/index.js",
-    "register-commands": "node bot/commands/register-commands.js"
+    "register-commands": "node bot/commands/register-commands.js",
+    "chek": "node chek.js"
   },
   "author": "",
   "license": "MIT",
