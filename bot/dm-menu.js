@@ -111,6 +111,13 @@ async function handleDMMenuButton(interaction) {
     return;
   }
 
+  // Open lounge player in DM
+  if (customId === 'dm_menu_lounge') {
+    // create lounge player embed with controls
+    await openLoungePlayer(user, client, interaction);
+    return;
+  }
+
   if (customId === 'dm_menu_profile') {
     const embed = new EmbedBuilder()
       .setTitle('👤 Профиль')
@@ -210,3 +217,29 @@ module.exports = {
   createMainMenuButtons,
   createBackButton
 };
+
+// Lounge player: create DM lounge embed and controls
+async function openLoungePlayer(user, client, interaction) {
+  try {
+    const dm = await user.createDM().catch(() => null);
+    if (!dm) return;
+    const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+    const embed = new EmbedBuilder()
+      .setTitle('🎧 Lounge Player')
+      .setDescription('Управление музыкой в личных сообщениях. Текущая песня и очередь отображаются здесь.')
+      .setColor(0x1DB954);
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('dm_lounge_pause').setLabel('⏸ Пауза').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('dm_lounge_skip').setLabel('⏭ Пропустить').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('dm_lounge_repeat').setLabel('🔁 Повтор').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('dm_lounge_close').setLabel('✖ Закрыть').setStyle(ButtonStyle.Danger)
+    );
+
+    await dm.send({ embeds: [embed], components: [row] }).catch(() => {});
+    if (interaction && interaction.deferred) await interaction.update({ content: 'Открыл Lounge Player в ЛС.', embeds: [], components: [] }).catch(() => {});
+  } catch (err) {
+    console.error('openLoungePlayer error:', err.message);
+  }
+}
+

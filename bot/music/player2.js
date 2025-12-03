@@ -6,6 +6,10 @@ try { playdl = require('play-dl'); } catch (e) { playdl = null; }
 const { exec, spawn } = require('child_process');
 const db = require('../libs/db');
 const { Readable, PassThrough } = require('stream');
+const musicLogger = require('./musicLogger');
+const musicEmbeds = require('../music-interface/musicEmbeds');
+
+// Allow overriding binaries
 
 // Allow overriding binaries via environment variables (useful for pm2)
 const YTDLP_BIN = process.env.YTDLP_PATH || process.env.YTDLP_BIN || 'yt-dlp';
@@ -177,6 +181,39 @@ async function updateControlMessageWithError(guildId, client, content) {
     console.error('updateControlMessageWithError failed', e && e.message);
     return false;
   }
+}
+
+// Update control message to show now playing with progress
+async function updateControlMessageNowPlaying(guildId, client, title, currentMs, durationMs, ownerId) {
+  try {
+    const panelKey = `musicControl_${guildId}`;
+    const panelRec = db.get(panelKey);
+    if (!panelRec || !panelRec.channelId || !panelRec.messageId) return false;
+    const ch = await client.channels.fetch(panelRec.channelId).catch(() => null);
+    if (!ch || !ch.messages) return false;
+    const msg = await ch.messages.fetch(panelRec.messageId).catch(() => null);
+    if (!msg || !msg.edit) return false;
+
+    const embed = musicEmbeds.createNowPlayingWithProgressEmbed(title, currentMs, durationMs);
+    // Build control buttons: if ownerId matches panelRec.owner, show owner controls, else show claim button
+    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+    let row;
+    if (panelRec && panelRec.owner && ownerId && String(panelRec.owner) === String(ownerId)) {
+      row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('music_pause').setLabel('⏸ Пауза').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('music_skip').setLabel('⏭ Пропустить').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('music_add_fav').setLabel('❤️ В избранное').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('music_playlist_add_current').setLabel('➕ В плейлист').setStyle(ButtonStyle.Primary)
+      );
+    } else {
+      row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary)
+      );
+    }
+
+    await msg.edit({ embeds: [embed], components: [row] }).catch(() => {});
+    return true;
+  } catch (e) { console.error('updateControlMessageNowPlaying failed', e && e.message); return false; }
 }
 
 async function findYouTubeUrl(query) {
@@ -809,7 +846,6 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
       return false;
     }
     state.playing = true;
-    
     // Use resolvedTitle (preferred) or URL for display; do not post raw URLs into chat when possible
     const displayTitle = resolvedTitle || (resolvedUrl && typeof resolvedUrl === 'string' ? resolvedUrl : (typeof url === 'string' ? url : 'Музыка'));
     state.current = { url: resolvedUrl || (typeof url === 'string' ? url : null), title: displayTitle, owner: userId ? String(userId) : null, type: 'music' };
@@ -819,6 +855,40 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
       await addToHistory(guild.id, userId || 'unknown', state.current);
       await saveLastTrack(guild.id, state.current);
       if (userId) await unlockAchievement(userId, 'played_music');
+      
+      // Log the music play
+      const voiceChannelName = voiceChannel && voiceChannel.name ? voiceChannel.name : 'Unknown Voice';
+      await musicLogger.logMusicPlay(guild, userId || 'unknown', displayTitle, voiceChannelName);
+    } catch (e) { /* ignore */ }
+
+    // Set up duration if possible
+    try {
+      if (resolvedUrl) {
+        try {
+          const info = await ytdl.getInfo(resolvedUrl).catch(() => null);
+          const len = info && info.videoDetails && info.videoDetails.lengthSeconds ? parseInt(info.videoDetails.lengthSeconds, 10) : 0;
+          state.current.durationMs = len ? (len * 1000) : 0;
+        } catch (e) { /* ignore */ }
+      }
+    } catch (e) { /* ignore */ }
+
+    // Start progress updater in control panel
+    try {
+      if (state._progressInterval) { clearInterval(state._progressInterval); state._progressInterval = null; }
+      state._progressStart = Date.now();
+      state._progressElapsed = 0;
+      const clientForPanel = (state && state._client) ? state._client : (guild && guild.client ? guild.client : null);
+      if (clientForPanel) {
+        // initial update
+        await updateControlMessageNowPlaying(guild.id, clientForPanel, displayTitle, 0, state.current.durationMs || 0, state.current.owner).catch(() => {});
+        state._progressInterval = setInterval(async () => {
+          try {
+            state._progressElapsed = Date.now() - state._progressStart;
+            await updateControlMessageNowPlaying(guild.id, clientForPanel, displayTitle, state._progressElapsed, state.current.durationMs || 0, state.current.owner).catch(() => {});
+          } catch (e) { /* ignore */ }
+        }, 1000);
+      }
+
     } catch (e) { /* ignore */ }
 
     // Short-play monitor: if playback stops/pauses within MIN_GOOD_PLAY_MS, consider it a failure and retry
@@ -964,6 +1034,8 @@ async function stop(guild) {
     const conn = getVoiceConnection(guild.id);
     if (conn) conn.destroy();
     state.connection = null;
+    // clear progress updater
+    try { if (state._progressInterval) { clearInterval(state._progressInterval); state._progressInterval = null; } } catch (e) {}
     
     // Update control message with stop status
     const client = guild.client;
@@ -978,12 +1050,28 @@ async function stop(guild) {
 async function skip(guild) {
   const state = players.get(guild.id);
   if (!state) return false;
-  try { state.player.stop(); return true; } catch (e) { console.error('skip error', e); return false; }
+  try {
+    try { if (state._progressInterval) { clearInterval(state._progressInterval); state._progressInterval = null; } } catch (e) {}
+    state.player.stop();
+    return true;
+  } catch (e) { console.error('skip error', e); return false; }
 }
 
 function isPlaying(guild) { const state = players.get(guild.id); return state && state.playing; }
 
 async function changeVolume(guild, delta) { const state = players.get(guild.id); if (!state) return null; state.volume = Math.max(0.01, Math.min(5.0, (state.volume || 1.0) + delta)); try { await saveQueueForGuild(guild.id); return state.volume; } catch (e) { return state.volume; } }
+
+async function pause(guild) {
+  const state = players.get(guild.id);
+  if (!state) return false;
+  try { state.player.pause(); return true; } catch (e) { console.error('pause error', e); return false; }
+}
+
+async function resume(guild) {
+  const state = players.get(guild.id);
+  if (!state) return false;
+  try { state.player.unpause(); return true; } catch (e) { console.error('resume error', e); return false; }
+}
 
 async function playRadio(guild, voiceChannel, radioStream, textChannel, userId) {
   try {
@@ -1393,10 +1481,78 @@ function getAchievements(userId) {
   } catch (e) { return {}; }
 }
 
+// Получить персональные плейлисты только пользователя
+async function getUserPersonalPlaylists(guildId, userId) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    const key = `${guildId}_${userId}`;
+    if (music.playlists && music.playlists[key]) {
+      return music.playlists[key];
+    }
+    return {};
+  } catch (e) { console.warn('getUserPersonalPlaylists failed', e && e.message); return {}; }
+}
+
+// Запустить весь плейлист
+async function playPlaylist(guild, voiceChannel, guildId, userId, playlistId, textChannel) {
+  try {
+    const playlists = await getUserPersonalPlaylists(guildId, userId);
+    const playlist = playlists[playlistId];
+    if (!playlist || !playlist.tracks || playlist.tracks.length === 0) {
+      if (textChannel && textChannel.send) {
+        await textChannel.send('❌ Плейлист пуст или не найден.');
+      }
+      return false;
+    }
+    let played = false;
+    for (let i = 0; i < playlist.tracks.length; i++) {
+      const track = playlist.tracks[i];
+      if (i === 0) {
+        await playNow(guild, voiceChannel, track.url || track.title, textChannel, userId);
+        played = true;
+      } else {
+        await addToQueue(guild, track.url || track.title);
+      }
+    }
+    if (played && textChannel && textChannel.send) {
+      await textChannel.send(`✅ Запущен плейлист **${playlist.name}** (${playlist.tracks.length} песен)`);
+    }
+    return played;
+  } catch (e) {
+    console.error('playPlaylist error:', e.message);
+    if (textChannel && textChannel.send) {
+      await textChannel.send('❌ Ошибка при запуске плейлиста.');
+    }
+    return false;
+  }
+}
+
+// Получить топ песен за неделю
+async function getWeeklyTopTracks(guildId, limit = 10) {
+  try {
+    return await musicLogger.getWeeklyTopTracks(guildId, limit);
+  } catch (e) {
+    console.error('getWeeklyTopTracks error:', e.message);
+    return [];
+  }
+}
+
+// Получить логи музыки
+async function getMusicLogs(guildId, limit = 50) {
+  try {
+    return await musicLogger.getMusicLogs(guildId, limit);
+  } catch (e) {
+    console.error('getMusicLogs error:', e.message);
+    return [];
+  }
+}
+
 module.exports = { 
   playNow, playRadio, addToQueue, stop, skip, isPlaying, changeVolume, findYouTubeUrl,
   addToHistory, getHistory, addToFavorites, getFavorites, removeFromFavorites,
   createPlaylist, addTrackToPlaylist, getPlaylists, deletePlaylist, removeTrackFromPlaylist,
   getLastTrack, saveLastTrack, enhancedSearch, getRecommendations,
-  unlockAchievement, getAchievements
+  unlockAchievement, getAchievements, getUserPersonalPlaylists, playPlaylist,
+  getWeeklyTopTracks, getMusicLogs, pause, resume
 };

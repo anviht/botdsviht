@@ -256,6 +256,51 @@ client.on('interactionCreate', async (interaction) => {
         }
         return;
       }
+      // DM lounge player buttons
+      if (interaction.customId && interaction.customId.startsWith('dm_lounge_')) {
+        try {
+          const cid = interaction.customId;
+          // find a guild where this user is in a voice channel and bot is connected
+          let targetGuild = null;
+          for (const g of interaction.client.guilds.cache.values()) {
+            try {
+              const member = await g.members.fetch(interaction.user.id).catch(() => null);
+              if (!member) continue;
+              const vch = member.voice && member.voice.channel ? member.voice.channel : null;
+              const botMember = await g.members.fetch(interaction.client.user.id).catch(() => null);
+              if (vch && botMember && botMember.voice && botMember.voice.channel && botMember.voice.channel.id === vch.id) {
+                targetGuild = g; break;
+              }
+            } catch (e) { /* ignore */ }
+          }
+          if (!targetGuild) { await safeReply(interaction, { content: '❌ Не найден подключённый голосовой канал для управления.', ephemeral: true }); return; }
+          const musicPlayer = require('./music/player2');
+          if (cid === 'dm_lounge_pause') {
+            await musicPlayer.pause(targetGuild).catch(() => {});
+            await safeReply(interaction, { content: '⏸ Пауза отправлена.', ephemeral: true });
+            return;
+          }
+          if (cid === 'dm_lounge_skip') {
+            await musicPlayer.skip(targetGuild).catch(() => {});
+            await safeReply(interaction, { content: '⏭ Трек пропущен.', ephemeral: true });
+            return;
+          }
+          if (cid === 'dm_lounge_repeat') {
+            // TODO: implement repeat toggle later
+            await safeReply(interaction, { content: '🔁 Функция повторения пока недоступна.', ephemeral: true });
+            return;
+          }
+          if (cid === 'dm_lounge_close') {
+            try { await interaction.message.delete().catch(() => {}); } catch (e) {}
+            await safeReply(interaction, { content: 'Окно Lounge закрыто.', ephemeral: true });
+            return;
+          }
+        } catch (err) {
+          console.error('DM lounge handler error', err);
+          await safeReply(interaction, { content: 'Ошибка при управлении Lounge.', ephemeral: true });
+        }
+        return;
+      }
       // Music search button selection
       if (interaction.customId && interaction.customId.startsWith('music_search_btn_')) {
         try {

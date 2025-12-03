@@ -106,6 +106,44 @@ function formatTime(ms) {
   return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
+function createWeeklyTopEmbed(topTracks) {
+  let description = '**Топ 10 песен за неделю на сервере:**\n\n';
+  if (topTracks.length === 0) {
+    description += 'Нет данных о прослушиваниях за эту неделю.';
+  } else {
+    topTracks.forEach((track, index) => {
+      description += `**${index + 1}.** ${track.title} (${track.count} раз)\n`;
+    });
+  }
+  
+  const embed = new EmbedBuilder()
+    .setTitle('🏆 Еженедельный хит-лист')
+    .setColor(0xFFD700)
+    .setDescription(description)
+    .setFooter({ text: 'Обновляется каждую неделю' });
+  
+  return embed;
+}
+
+function createMusicLogsEmbed(logs) {
+  let description = '**История прослушиваний:**\n\n';
+  if (logs.length === 0) {
+    description += 'Нет записей о прослушиваниях.';
+  } else {
+    logs.slice(0, 20).forEach(log => {
+      description += `📻 ${log.formattedTime} - **${log.trackTitle}** (${log.voiceChannel})\n`;
+    });
+  }
+  
+  const embed = new EmbedBuilder()
+    .setTitle('📻 Логи музыки')
+    .setColor(0x00BCD4)
+    .setDescription(description)
+    .setFooter({ text: `Всего записей: ${logs.length}` });
+  
+  return embed;
+}
+
 module.exports = {
   createMusicMenuEmbed,
   createRadioListEmbed,
@@ -115,5 +153,7 @@ module.exports = {
   createHistoryEmbed,
   createFavoritesEmbed,
   createPlaylistsEmbed,
-  formatTime
+  formatTime,
+  createWeeklyTopEmbed,
+  createMusicLogsEmbed
 };
