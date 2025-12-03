@@ -1548,11 +1548,20 @@ async function getMusicLogs(guildId, limit = 50) {
   }
 }
 
+// Получить текущий трек для гильдии (если есть)
+function getCurrentTrack(guildId) {
+  try {
+    const state = players.get(guildId);
+    if (!state) return null;
+    return state.current || null;
+  } catch (e) { console.error('getCurrentTrack failed', e && e.message); return null; }
+}
+
 module.exports = { 
   playNow, playRadio, addToQueue, stop, skip, isPlaying, changeVolume, findYouTubeUrl,
   addToHistory, getHistory, addToFavorites, getFavorites, removeFromFavorites,
   createPlaylist, addTrackToPlaylist, getPlaylists, deletePlaylist, removeTrackFromPlaylist,
   getLastTrack, saveLastTrack, enhancedSearch, getRecommendations,
   unlockAchievement, getAchievements, getUserPersonalPlaylists, playPlaylist,
-  getWeeklyTopTracks, getMusicLogs, pause, resume
+  getWeeklyTopTracks, getMusicLogs, pause, resume, getCurrentTrack
 };
