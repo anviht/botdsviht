@@ -197,21 +197,66 @@ async function updateControlMessageNowPlaying(guildId, client, title, currentMs,
     const embed = musicEmbeds.createNowPlayingWithProgressEmbed(title, currentMs, durationMs);
     // Build control buttons: if ownerId matches panelRec.owner, show owner controls, else show claim button
     const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-    let row;
+    const components = [];
     if (panelRec && panelRec.owner && ownerId && String(panelRec.owner) === String(ownerId)) {
-      row = new ActionRowBuilder().addComponents(
+      // Primary owner controls
+      const ownerRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('music_pause').setLabel('⏸ Пауза').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('music_skip').setLabel('⏭ Пропустить').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('music_add_fav').setLabel('❤️ В избранное').setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId('music_playlist_add_current').setLabel('➕ В плейлист').setStyle(ButtonStyle.Primary)
       );
+      components.push(ownerRow);
+
+      // Add playlist quick-actions: play / add current / delete (up to 5 per row)
+      try {
+        const pls = getPlaylists(guildId, ownerId) || {};
+        const ids = Object.keys(pls || {});
+        if (ids.length > 0) {
+          // Play buttons row (max 5)
+          const playBtns = new ActionRowBuilder();
+          let playCount = 0;
+          for (const pid of ids) {
+            if (playCount >= 5) break;
+            const label = (pls[pid] && pls[pid].name) ? (pls[pid].name.substring(0, 80)) : `Playlist ${pid}`;
+            playBtns.addComponents(new ButtonBuilder().setCustomId(`music_play_pl_${guildId}_${pid}`).setLabel(`▶ ${label}`).setStyle(ButtonStyle.Success));
+            playCount++;
+          }
+          if (playCount > 0) components.push(playBtns);
+
+          // Add-current buttons row (max 5)
+          const addBtns = new ActionRowBuilder();
+          let addCount = 0;
+          for (const pid of ids) {
+            if (addCount >= 5) break;
+            const label = (pls[pid] && pls[pid].name) ? (pls[pid].name.substring(0, 60)) : `Playlist ${pid}`;
+            addBtns.addComponents(new ButtonBuilder().setCustomId(`music_addcurrent_pl_${guildId}_${pid}`).setLabel(`➕ ${label}`).setStyle(ButtonStyle.Primary));
+            addCount++;
+          }
+          if (addCount > 0) components.push(addBtns);
+
+          // Delete buttons row (danger) (max 5)
+          const delBtns = new ActionRowBuilder();
+          let delCount = 0;
+          for (const pid of ids) {
+            if (delCount >= 5) break;
+            const label = (pls[pid] && pls[pid].name) ? (pls[pid].name.substring(0, 50)) : `Playlist ${pid}`;
+            delBtns.addComponents(new ButtonBuilder().setCustomId(`music_delete_pl_${guildId}_${pid}`).setLabel(`🗑 ${label}`).setStyle(ButtonStyle.Danger));
+            delCount++;
+          }
+          if (delCount > 0) components.push(delBtns);
+        }
+      } catch (e) {
+        // ignore playlist rendering errors
+      }
     } else {
-      row = new ActionRowBuilder().addComponents(
+      const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Начать пользоваться').setStyle(ButtonStyle.Primary)
       );
+      components.push(row);
     }
 
-    await msg.edit({ embeds: [embed], components: [row] }).catch(() => {});
+    await msg.edit({ embeds: [embed], components }).catch(() => {});
     return true;
   } catch (e) { console.error('updateControlMessageNowPlaying failed', e && e.message); return false; }
 }

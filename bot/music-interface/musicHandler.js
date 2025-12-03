@@ -369,6 +369,86 @@ async function handleMusicButton(interaction) {
       return;
     }
 
+    // ===== PLAYLISTS IN CONTROL PANEL =====
+    // Add current track to a playlist: music_addcurrent_pl_<guildId>_<playlistId>
+    if (customId && customId.startsWith('music_addcurrent_pl_')) {
+      try {
+        // format: music_addcurrent_pl_<guildId>_<playlistId>
+        const parts = customId.split('_');
+        const guildId = parts[3];
+        const playlistId = parts.slice(4).join('_');
+        if (!guildId || !playlistId) return await interaction.reply({ content: 'Неверный идентификатор плейлиста.', ephemeral: true });
+        // ensure member in voice channel
+        const voiceChannel = member && member.voice ? member.voice.channel : null;
+        const current = await musicPlayer.getCurrentTrack(guild.id);
+        if (!current) return await interaction.reply({ content: 'Нет текущего трека для добавления.', ephemeral: true });
+        const ok = await musicPlayer.addTrackToPlaylist(guild.id, user.id, playlistId, { url: current.url, title: current.title });
+        if (ok) return await interaction.reply({ content: `✅ Трек добавлен в плейлист.`, ephemeral: true });
+        return await interaction.reply({ content: '❌ Не удалось добавить трек в плейлист.', ephemeral: true });
+      } catch (e) { console.error('control addcurrent handler error', e); try { await interaction.reply({ content: 'Ошибка при добавлении в плейлист.', ephemeral: true }); } catch(ignore){} }
+      return;
+    }
+
+    // Play a playlist: music_play_pl_<guildId>_<playlistId>
+    if (customId && customId.startsWith('music_play_pl_')) {
+      try {
+        const parts = customId.split('_');
+        const guildId = parts[3];
+        const playlistId = parts.slice(4).join('_');
+        if (!guildId || !playlistId) return await interaction.reply({ content: 'Неверный запрос.', ephemeral: true });
+        const voiceChannel = member && member.voice ? member.voice.channel : null;
+        if (!voiceChannel) return await interaction.reply({ content: 'Вы должны быть в голосовом канале, чтобы запустить плейлист.', ephemeral: true });
+        const ok = await musicPlayer.playPlaylist(guild, voiceChannel, guild.id, user.id, playlistId, interaction.channel);
+        if (ok) return await interaction.reply({ content: `▶️ Плейлист запущен.`, ephemeral: true });
+        return await interaction.reply({ content: '❌ Не удалось запустить плейлист.', ephemeral: true });
+      } catch (e) { console.error('control play playlist error', e); try { await interaction.reply({ content: 'Ошибка при запуске плейлиста.', ephemeral: true }); } catch(ignore){} }
+      return;
+    }
+
+    // Delete a playlist: music_delete_pl_<guildId>_<playlistId>
+    if (customId && customId.startsWith('music_delete_pl_')) {
+      try {
+        const parts = customId.split('_');
+        const guildId = parts[3];
+        const playlistId = parts.slice(4).join('_');
+        if (!guildId || !playlistId) return await interaction.reply({ content: 'Неверный запрос.', ephemeral: true });
+        const ok = await musicPlayer.deletePlaylist(guild.id, user.id, playlistId);
+        if (ok) return await interaction.reply({ content: '🗑 Плейлист удалён.', ephemeral: true });
+        return await interaction.reply({ content: '❌ Не удалось удалить плейлист.', ephemeral: true });
+      } catch (e) { console.error('control delete playlist error', e); try { await interaction.reply({ content: 'Ошибка при удалении плейлиста.', ephemeral: true }); } catch(ignore){} }
+      return;
+    }
+
+    // Open 'add to playlist' chooser inside control panel: music_playlist_add_current
+    if (customId === 'music_playlist_add_current') {
+      try {
+        const pls = await musicPlayer.getPlaylists(guild.id, user.id) || {};
+        const ids = Object.keys(pls || {});
+        if (!ids.length) {
+          // create a quick default playlist if none exist
+          const created = await musicPlayer.createPlaylist(guild.id, user.id, `My playlist ${new Date().toLocaleString()}`);
+          if (created) {
+            return await interaction.reply({ content: `✅ Создан плейлист и готов к добавлению. Нажмите ещё раз кнопку «В плейлист» в панели.` , ephemeral: true });
+          }
+          return await interaction.reply({ content: 'У вас нет плейлистов и не удалось создать новый.', ephemeral: true });
+        }
+        // Build ephemeral chooser with up to 5 playlists
+        const rows = [];
+        const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+        for (let i = 0; i < ids.length; i += 5) {
+          const slice = ids.slice(i, i + 5);
+          const row = new ActionRowBuilder();
+          for (const pid of slice) {
+            const name = (pls[pid] && pls[pid].name) ? pls[pid].name.substring(0, 80) : pid;
+            row.addComponents(new ButtonBuilder().setCustomId(`music_addcurrent_pl_${guild.id}_${pid}`).setLabel(name).setStyle(ButtonStyle.Primary));
+          }
+          rows.push(row);
+        }
+        await interaction.reply({ content: 'Выберите плейлист для добавления текущего трека:', components: rows, ephemeral: true });
+      } catch (e) { console.error('playlist chooser error', e); try { await interaction.reply({ content: 'Ошибка получения плейлистов.', ephemeral: true }); } catch(ignore){} }
+      return;
+    }
+
     // RADIO MENU
     if (customId === 'music_radio') {
       const embed = createRadioListEmbed();
