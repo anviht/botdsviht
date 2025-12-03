@@ -300,7 +300,8 @@ async function streamFromUrl(url) {
 async function getStreamFromYtDlp(url) {
   return new Promise((resolve) => {
     const cmd = `${YTDLP_BIN} -f "bestaudio" -g "${url.replace(/"/g, '\\"')}" 2>&1`;
-    exec(cmd, { timeout: 30000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+    // Increase exec timeout to allow yt-dlp more time on slower systems
+    exec(cmd, { timeout: 60000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
         if (err || !stdout || stdout.includes('ERROR')) {
           console.warn('yt-dlp failed:', err && err.message, 'stdout:', (stdout||'').slice(0,200), 'stderr:', (stderr||'').slice(0,400));
           resolve(null);
@@ -379,13 +380,13 @@ async function getStreamFromYtDlpPipe(url, state) {
       yt.on('close', fail);
       ff.on('close', fail);
 
-      // fallback timeout
+      // fallback timeout — give more time for yt-dlp+ffmpeg to negotiate streams
       setTimeout(() => {
         if (!started) {
           console.warn('getStreamFromYtDlpPipe: timeout waiting for stream', url.substring(0,80));
           fail();
         }
-      }, 8000);
+      }, 15000);
     } catch (e) {
       console.warn('getStreamFromYtDlpPipe error', e && e.message);
       resolve(null);
@@ -790,8 +791,11 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
       }
     }
 
-    if (resource && resource.volume) resource.volume.setVolume(state.volume || 1.0);
-
+    if (resource) {
+      try { console.log('Selected resource attemptDetails:', JSON.stringify(attemptDetails).slice(0,2000)); } catch (e) {}
+      try { if (resource.volume) resource.volume.setVolume(state.volume || 1.0); } catch (e) {}
+    }
+    
     state.player.stop();
     try {
       state.player.play(resource);
@@ -812,7 +816,7 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
 
     // Short-play monitor: if playback stops/pauses within MIN_GOOD_PLAY_MS, consider it a failure and retry
     try {
-      const MIN_GOOD_PLAY_MS = parseInt(process.env.MIN_GOOD_PLAY_MS || '7000', 10) || 7000;
+      const MIN_GOOD_PLAY_MS = parseInt(process.env.MIN_GOOD_PLAY_MS || '5000', 10) || 5000;
       let playedSuccessfully = false;
       let goodTimer = null;
 
