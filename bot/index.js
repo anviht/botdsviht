@@ -60,6 +60,7 @@ const { handleMusicButton, ensureMusicControlPanel } = require('./music-interfac
 const { handleControlPanelButton } = require('./music-interface/controlPanelHandler');
 const { handlePriceButton } = require('./price/priceHandler');
 const { handleAiButton, createAiPanelEmbed, makeButtons: makeAiButtons } = require('./ai/aiHandler');
+const { ensureMenuPanel, handleMenuButton } = require('./menus/menuHandler');
 // optional helpers
 let handleReactionAdd = null;
 let handleReactionRemove = null;
@@ -152,6 +153,11 @@ client.on('interactionCreate', async (interaction) => {
       // AI buttons (ai_register, ai_close, ai_new, ai_delete)
       if (interaction.customId && interaction.customId.startsWith('ai_')) {
         try { await handleAiButton(interaction); } catch (err) { console.error('AI button error', err); await safeReply(interaction, { content: 'Ошибка при обработке кнопки ИИ.', ephemeral: true }); }
+        return;
+      }
+      // Menu buttons
+      if (interaction.customId && interaction.customId.startsWith('menu_')) {
+        try { await handleMenuButton(interaction); } catch (err) { console.error('Menu button error', err); await safeReply(interaction, { content: 'Ошибка при обработке меню.', ephemeral: true }); }
         return;
       }
       // Music/Radio buttons
@@ -664,6 +670,11 @@ client.once('ready', async () => {
     await ensureAiPanel();
     setInterval(async () => { try { await ensureAiPanel(); } catch (e) { } }, 5 * 60 * 1000);
   } catch (e) { console.warn('Failed to ensure AI panel on ready:', e && e.message ? e.message : e); }
+  // Ensure main navigation menu in menu channel
+  try {
+    await ensureMenuPanel(client);
+    setInterval(async () => { try { await ensureMenuPanel(client); } catch (e) { /* ignore */ } }, 5 * 60 * 1000);
+  } catch (e) { console.warn('Failed to ensure menu panel on ready:', e && e.message ? e.message : e); }
   // Post bot management panel with music — robust ensure/edit/post helper
   try {
     const CONTROL_PANEL_CHANNEL_ID = '1443194196172476636';
