@@ -489,67 +489,102 @@ client.once('ready', async () => {
   }
   // Startup reconciliation: restore active mutes and reschedule unmute timers
   try {
+    const MUTE_ROLE_ID = '1445152678706679939';
     const mutes = db.get('mutes') || {};
     const now = Date.now();
     for (const [userId, entry] of Object.entries(mutes)) {
       try {
-        const guild = client.guilds.cache.first();
+        const guild = client.guilds.cache.get(entry.guildId);
         if (!guild) continue;
         const member = await guild.members.fetch(userId).catch(() => null);
         if (!member) continue;
-        // Ensure Muted role exists and is present
-        let mutedRole = guild.roles.cache.find(r => r.name === 'Muted');
+
+        // Ensure mute role exists and is present
+        const mutedRole = guild.roles.cache.get(MUTE_ROLE_ID);
         if (!mutedRole) {
-          mutedRole = await guild.roles.create({ name: 'Muted', color: '#808080', reason: 'Restore muted role on startup' }).catch(() => null);
+          console.warn(`Mute role ${MUTE_ROLE_ID} not found on guild ${guild.id}, skipping user ${userId}`);
+          continue;
         }
-        if (mutedRole && !member.roles.cache.has(mutedRole.id)) {
-          try { await member.roles.add(mutedRole); } catch (e) {}
-        }
-        // Re-apply per-channel overwrites for mutated role (best-effort)
-        try {
-          const channels = await guild.channels.fetch();
-          for (const [, channel] of channels) {
-            try {
-              if (channel.isTextBased && channel.isTextBased()) {
-                await channel.permissionOverwrites.edit(mutedRole, { SendMessages: false, AddReactions: false }).catch(() => null);
-              }
-              if (channel.isVoiceBased && channel.isVoiceBased()) {
-                await channel.permissionOverwrites.edit(mutedRole, { Speak: false, Connect: false }).catch(() => null);
-              }
-            } catch (e) {}
+
+        // If mute role is not present, add it
+        if (!member.roles.cache.has(MUTE_ROLE_ID)) {
+          try { await member.roles.add(MUTE_ROLE_ID); } catch (e) {
+            console.warn(`Failed to add mute role to ${userId}:`, e.message);
           }
-        } catch (e) {}
+        }
 
         // Calculate remaining time and schedule unmute if needed
         if (entry && entry.unmuteTime) {
           const unmuteAt = new Date(entry.unmuteTime).getTime();
           const ms = Math.max(0, unmuteAt - now);
-          setTimeout(async () => {
+
+          if (ms <= 0) {
+            // Mute has already expired, unmute immediately
             try {
-              const g = client.guilds.cache.first();
-              if (!g) return;
-              const m = await g.members.fetch(userId).catch(() => null);
-              if (!m) return;
-              const role = g.roles.cache.find(r => r.name === 'Muted');
-              if (role && m.roles.cache.has(role.id)) {
-                try { await m.roles.remove(role); } catch (e) {}
-                // restore removed roles if present
-                if (entry.removedRoles && entry.removedRoles.length > 0) {
-                  const toRestore = entry.removedRoles.filter(id => g.roles.cache.has(id));
-                  if (toRestore.length > 0) {
-                    try { await m.roles.add(toRestore); } catch (e) {}
-                  }
+              if (member.roles.cache.has(MUTE_ROLE_ID)) {
+                await member.roles.remove(MUTE_ROLE_ID);
+              }
+              // Restore removed roles
+              if (entry.removedRoles && entry.removedRoles.length > 0) {
+                const toRestore = entry.removedRoles.filter(id => guild.roles.cache.has(id));
+                if (toRestore.length > 0) {
+                  await member.roles.add(toRestore);
                 }
               }
               const current = db.get('mutes') || {};
               delete current[userId];
               await db.set('mutes', current);
-            } catch (e) {}
-          }, ms);
+            } catch (e) {
+              console.warn(`Failed to unmute expired user ${userId}:`, e.message);
+            }
+          } else {
+            // Schedule unmute for later
+            setTimeout(async () => {
+              try {
+                const g = await client.guilds.fetch(entry.guildId).catch(() => null);
+                if (!g) return;
+                const m = await g.members.fetch(userId).catch(() => null);
+                if (!m) return;
+
+                // Remove mute role
+                if (m.roles.cache.has(MUTE_ROLE_ID)) {
+                  try { await m.roles.remove(MUTE_ROLE_ID); } catch (e) {
+                    console.warn(`Failed to remove mute role from ${userId}:`, e.message);
+                  }
+                }
+
+                // Restore removed roles
+                if (entry.removedRoles && entry.removedRoles.length > 0) {
+                  const toRestore = entry.removedRoles.filter(id => g.roles.cache.has(id));
+                  if (toRestore.length > 0) {
+                    try { await m.roles.add(toRestore); } catch (e) {
+                      console.warn(`Failed to restore roles to ${userId}:`, e.message);
+                    }
+                  }
+                }
+
+                // Remove from mutes DB
+                const current = db.get('mutes') || {};
+                delete current[userId];
+                await db.set('mutes', current);
+
+                console.log(`User ${userId} automatically unmuted after timeout`);
+              } catch (e) {
+                console.error('Unmute timer error:', e.message);
+              }
+            }, ms);
+            console.log(`Scheduled unmute for user ${userId} in ${Math.round(ms / 1000)}s`);
+          }
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn(`Error reconciling mute for user ${userId}:`, e.message);
+      }
     }
-  } catch (e) { console.warn('Startup reconciliation failed', e && e.message ? e.message : e); }
+    console.log('Mute reconciliation completed');
+  } catch (e) {
+    console.warn('Failed mute reconciliation:', e && e.message ? e.message : e);
+  }
+
   // RULES POSTING DISABLED - commented out to prevent duplicate postings
   /*
   try {

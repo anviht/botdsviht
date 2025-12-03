@@ -13,6 +13,7 @@ module.exports = {
     await db.ensureReady();
     const config = require('../config');
     const LOG_CHANNEL_ID = '1445119290444480684';
+    const MUTE_ROLE_ID = '1445152678706679939'; // Preset mute role
 
     const isAdmin = config.adminRoles.some(rid => interaction.member.roles.cache.has(rid));
     if (!isAdmin) {
@@ -36,14 +37,10 @@ module.exports = {
       const targetMember = await interaction.guild.members.fetch(targetId);
       const botMember = interaction.guild.members.me || await interaction.guild.members.fetch(interaction.client.user.id);
 
-      // Создать или найти muted роль
-      let mutedRole = interaction.guild.roles.cache.find(r => r.name === 'Muted');
+      // Get the mute role (must exist in guild)
+      const mutedRole = interaction.guild.roles.cache.get(MUTE_ROLE_ID);
       if (!mutedRole) {
-        mutedRole = await interaction.guild.roles.create({
-          name: 'Muted',
-          color: '#808080',
-          reason: 'Роль для замучиванных пользователей'
-        });
+        return await interaction.editReply({ content: `❌ Роль мута (ID: ${MUTE_ROLE_ID}) не найдена на сервере. Попросите админа создать её.`, ephemeral: true });
       }
 
       // Установить/обновить permissions на все каналы: запретить отправку сообщений и реакции в текстовых, и говорить/подключаться в голосовых
@@ -71,54 +68,69 @@ module.exports = {
         // Игнорировать
       }
 
-      // Remove existing roles that can allow sending messages — store them to restore later
-      const botHighestPos = botMember.roles.highest ? botMember.roles.highest.position : 0;
-      const removable = targetMember.roles.cache.filter(r => {
-        if (r.id === interaction.guild.id) return false; // @everyone
-        if (r.id === mutedRole.id) return false;
-        if (r.managed) return false; // don't touch integrations
-        if (!r.editable) return false; // bot cannot remove
-        // avoid removing roles higher or equal to bot
-        if (r.position >= botHighestPos) return false;
-        // avoid removing configured adminRoles
-        if (config.adminRoles && config.adminRoles.includes(r.id)) return false;
-        return true;
-      });
+      // Fetch all current roles of the user
+      const currentRoles = targetMember.roles.cache.filter(r => r.id !== interaction.guild.id && r.id !== MUTE_ROLE_ID);
+      const currentRoleIds = currentRoles.map(r => r.id);
 
-      const removedRoleIds = removable.map(r => r.id);
-      if (removedRoleIds.length > 0) {
-        try { await targetMember.roles.remove(removedRoleIds); } catch (e) { /* ignore */ }
+      // If user already has mute role, just update the timeout
+      if (targetMember.roles.cache.has(MUTE_ROLE_ID)) {
+        // User already muted, just update DB entry with new expiry
+        const mutes = db.get('mutes') || {};
+        if (mutes[targetId]) {
+          mutes[targetId].unmuteTime = new Date(Date.now() + duration * 60000).toISOString();
+          mutes[targetId].adminId = adminId;
+          mutes[targetId].reason = reason;
+          mutes[targetId].muteTime = new Date().toISOString();
+          await db.set('mutes', mutes);
+        }
+        const embed = new EmbedBuilder()
+          .setColor('#808080')
+          .setTitle('🔇 Мут пользователя обновлен')
+          .addFields(
+            { name: 'Пользователь', value: targetUser.username, inline: true },
+            { name: 'Новая длительность', value: `${duration} минут`, inline: true },
+            { name: 'Причина', value: reason, inline: false },
+            { name: 'Админ', value: interaction.user.username, inline: true }
+          )
+          .setThumbnail(targetUser.displayAvatarURL())
+          .setTimestamp();
+        return await interaction.editReply({ embeds: [embed] });
       }
 
-      await targetMember.roles.add(mutedRole);
+      // Remove all current roles (except @everyone and mute role)
+      if (currentRoleIds.length > 0) {
+        try {
+          await targetMember.roles.remove(currentRoleIds);
+        } catch (e) {
+          console.warn('Failed to remove some roles during mute:', e.message);
+        }
+      }
 
-      // Отключить из голосового канала, если пользователь был в нём (если у бота есть право перемещать участников)
+      // Add mute role
+      try {
+        await targetMember.roles.add(MUTE_ROLE_ID);
+      } catch (e) {
+        return await interaction.editReply({ content: `❌ Ошибка: не удалось добавить роль мута. ${e.message}`, ephemeral: true });
+      }
+
+      // Disconnect from voice channel if in one
       try {
         if (targetMember.voice && targetMember.voice.channel) {
-          // try to move to null (disconnect)
           await targetMember.voice.setChannel(null).catch(() => {});
         }
       } catch (err) {
-        // Игнорировать ошибки при отключении
+        // Ignore voice disconnect errors
       }
 
-      // Отключить из голосового канала, если пользователь был в нём
-      try {
-        if (targetMember.voice && targetMember.voice.channel) {
-          await targetMember.voice.setChannel(null).catch(() => {});
-        }
-      } catch (err) {
-        // Игнорировать ошибки при отключении
-      }
-
-      // Сохранить в БД (включая снятые роли для восстановления)
+      // Save to DB (including removed roles for restoration)
       const mutes = db.get('mutes') || {};
       mutes[targetId] = {
+        guildId: interaction.guild.id,
         adminId,
         reason,
         muteTime: new Date().toISOString(),
         unmuteTime: new Date(Date.now() + duration * 60000).toISOString(),
-        removedRoles: removedRoleIds
+        removedRoles: currentRoleIds
       };
       await db.set('mutes', mutes);
 
@@ -162,29 +174,74 @@ module.exports = {
         // DM не отправляется
       }
 
-      // Автоматически размутить через duration минут
-      setTimeout(async () => {
+      // Automatically unmute after duration
+      const unmuteTimer = setTimeout(async () => {
         try {
           const stored = (await db.get('mutes')) || {};
           const entry = stored[targetId];
           if (!entry) return;
+
           const updatedMember = await interaction.guild.members.fetch(targetId).catch(() => null);
-          const role = interaction.guild.roles.cache.find(r => r.name === 'Muted');
-          if (updatedMember && role && updatedMember.roles.cache.has(role.id)) {
-            try { await updatedMember.roles.remove(role); } catch (e) {}
-            if (entry.removedRoles && entry.removedRoles.length > 0) {
-              const toRestore = entry.removedRoles.filter(id => interaction.guild.roles.cache.has(id));
-              if (toRestore.length > 0) {
-                try { await updatedMember.roles.add(toRestore); } catch (e) {}
+          if (!updatedMember) return;
+
+          // Remove mute role
+          if (updatedMember.roles.cache.has(MUTE_ROLE_ID)) {
+            try { await updatedMember.roles.remove(MUTE_ROLE_ID); } catch (e) {
+              console.warn('Failed to remove mute role during unmute:', e.message);
+            }
+          }
+
+          // Restore previously removed roles
+          if (entry.removedRoles && entry.removedRoles.length > 0) {
+            const toRestore = entry.removedRoles.filter(id => interaction.guild.roles.cache.has(id));
+            if (toRestore.length > 0) {
+              try { await updatedMember.roles.add(toRestore); } catch (e) {
+                console.warn('Failed to restore roles after unmute:', e.message);
               }
             }
           }
+
+          // Remove from mutes DB
           delete stored[targetId];
           await db.set('mutes', stored);
+
+          // Notify user
+          try {
+            const unmuteEmbed = new EmbedBuilder()
+              .setColor('#2ECC71')
+              .setTitle('🔊 Вы размучены')
+              .setDescription(`Вы размучены на сервере **${interaction.guild.name}**`)
+              .setTimestamp();
+            await targetUser.send({ embeds: [unmuteEmbed] });
+          } catch (e) {
+            // DM failed, ignore
+          }
+
+          // Log to channel
+          try {
+            const logChannel = await interaction.guild.channels.fetch(LOG_CHANNEL_ID);
+            if (logChannel) {
+              const logEmbed = new EmbedBuilder()
+                .setColor('#2ECC71')
+                .setTitle('🔊 Пользователь размучен (автоматически)')
+                .addFields(
+                  { name: 'Пользователь', value: targetUser.username, inline: true },
+                  { name: 'Причина мута была', value: reason, inline: false }
+                )
+                .setTimestamp();
+              await logChannel.send({ embeds: [logEmbed] });
+            }
+          } catch (e) {
+            // Log channel fetch failed
+          }
         } catch (err) {
-          // Игнорировать
+          console.error('Unmute timer error:', err.message);
         }
       }, duration * 60000);
+
+      // Store timer ID for cleanup on bot restart (optional, for graceful shutdown)
+      global.muteTimers = global.muteTimers || {};
+      global.muteTimers[targetId] = unmuteTimer;
 
     } catch (err) {
       return await interaction.reply({ content: `❌ Ошибка: ${err.message}`, ephemeral: true });
