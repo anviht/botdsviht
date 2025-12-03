@@ -286,8 +286,17 @@ client.on('interactionCreate', async (interaction) => {
             return;
           }
           if (cid === 'dm_lounge_repeat') {
-            // TODO: implement repeat toggle later
-            await safeReply(interaction, { content: '🔁 Функция повторения пока недоступна.', ephemeral: true });
+            try {
+              const newState = await musicPlayer.toggleRepeat(targetGuild.id).catch(() => null);
+              await safeReply(interaction, { content: `🔁 Repeat is now ${newState ? 'ON' : 'OFF'}.`, ephemeral: true });
+            } catch (e) { await safeReply(interaction, { content: 'Ошибка при переключении Repeat.', ephemeral: true }); }
+            return;
+          }
+          if (cid === 'dm_lounge_shuffle') {
+            try {
+              const newState = await musicPlayer.toggleShuffle(targetGuild.id).catch(() => null);
+              await safeReply(interaction, { content: `🔀 Shuffle is now ${newState ? 'ON' : 'OFF'}.`, ephemeral: true });
+            } catch (e) { await safeReply(interaction, { content: 'Ошибка при переключении Shuffle.', ephemeral: true }); }
             return;
           }
           if (cid === 'dm_lounge_close') {

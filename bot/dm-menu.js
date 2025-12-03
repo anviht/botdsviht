@@ -394,11 +394,56 @@ async function openLoungePlayer(user, client, interaction) {
       new ButtonBuilder().setCustomId('dm_lounge_pause').setLabel('⏸ Пауза').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('dm_lounge_skip').setLabel('⏭ Пропустить').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('dm_lounge_repeat').setLabel('🔁 Повтор').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('dm_lounge_shuffle').setLabel('🔀 Перемешать').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('dm_lounge_close').setLabel('✖ Закрыть').setStyle(ButtonStyle.Danger)
     );
 
-    await dm.send({ embeds: [embed], components: [row] }).catch(() => {});
+    const sent = await dm.send({ embeds: [embed], components: [row] }).catch(() => null);
+    if (!sent) return;
     if (interaction && interaction.deferred) await interaction.update({ content: 'Открыл Lounge Player в ЛС.', embeds: [], components: [] }).catch(() => {});
+
+    // Find a guild where the user and bot share the same voice channel
+    let foundGuild = null;
+    for (const g of client.guilds.cache.values()) {
+      try {
+        const member = await g.members.fetch(user.id).catch(() => null);
+        if (!member) continue;
+        const vch = member.voice && member.voice.channel ? member.voice.channel : null;
+        const botMember = await g.members.fetch(client.user.id).catch(() => null);
+        if (vch && botMember && botMember.voice && botMember.voice.channel && botMember.voice.channel.id === vch.id) { foundGuild = g; break; }
+      } catch (e) { /* ignore */ }
+    }
+    if (!foundGuild) return await sent.edit({ content: '❌ Не найден голосовой канал с ботом для Lounge.', embeds: [], components: [] }).catch(() => {});
+
+    const musicPlayer = require('./music/player2');
+    let stopped = false;
+    // Live updater
+    const updater = setInterval(async () => {
+      try {
+        if (stopped) return clearInterval(updater);
+        const cur = musicPlayer.getCurrentTrack(foundGuild.id) || null;
+        const queue = musicPlayer.getQueue(foundGuild.id) || [];
+        const prog = musicPlayer.getProgress(foundGuild.id) || { elapsed: 0, duration: 0 };
+        const settings = musicPlayer.getSettings(foundGuild.id) || {};
+        const embed = new EmbedBuilder()
+          .setTitle('🎧 Lounge Player')
+          .setColor(0x1DB954)
+          .setDescription(cur ? `Сейчас: **${cur.title || cur.url}**` : 'Сейчас ничего не играет');
+        if (cur && prog && prog.duration) {
+          embed.addFields({ name: 'Прогресс', value: `${formatTime(prog.elapsed)} / ${formatTime(prog.duration)}` });
+        }
+        if (queue && queue.length) {
+          const list = queue.slice(0, 10).map((q, i) => `${i+1}. ${q.query || q.title || q.url}`);
+          embed.addFields({ name: `Очередь (${queue.length})`, value: list.join('\n') });
+        }
+        embed.setFooter({ text: `Repeat: ${settings.repeat ? 'ON' : 'OFF'}  Shuffle: ${settings.shuffle ? 'ON' : 'OFF'}` });
+        await sent.edit({ embeds: [embed], components: [row] }).catch(() => {});
+      } catch (e) { /* ignore */ }
+    }, 2000);
+
+    // Stop updater when message components expire or message is deleted
+    const collector = sent.createMessageComponentCollector({ time: 1000 * 60 * 60 });
+    collector.on('end', () => { stopped = true; clearInterval(updater); });
   } catch (err) {
     console.error('openLoungePlayer error:', err.message);
   }

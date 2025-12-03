@@ -449,6 +449,86 @@ async function handleMusicButton(interaction) {
       return;
     }
 
+    // Open playlist details in-channel: music_pl_open_<guildId>_<playlistId>
+    if (customId && customId.startsWith('music_pl_open_')) {
+      try {
+        const parts = customId.split('_');
+        const guildId = parts[3];
+        const playlistId = parts.slice(4).join('_');
+        const pls = await musicPlayer.getUserPersonalPlaylists(guild.id, user.id).catch(() => ({}));
+        const pl = pls[playlistId];
+        if (!pl) return await interaction.reply({ content: 'Плейлист не найден.', ephemeral: true });
+        const { createPlaylistsEmbed, createPlaylistDetailEmbed } = require('./musicEmbeds');
+        // Build embed detailing tracks
+        const embed = createPlaylistDetailEmbed(pl);
+        const rows = [];
+        const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+        // For each track show up to 5 tracks per row with mini-controls
+        for (let i = 0; i < (pl.tracks || []).length; i++) {
+          // create a row per track with actions
+          const t = pl.tracks[i];
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`music_pl_playone_${guild.id}_${playlistId}_${i}`).setLabel(`▶ ${String(i+1)}`).setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`music_pl_moveup_${guild.id}_${playlistId}_${i}`).setLabel('⬆').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(`music_pl_movedown_${guild.id}_${playlistId}_${i}`).setLabel('⬇').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(`music_pl_remove_${guild.id}_${playlistId}_${i}`).setLabel('🗑').setStyle(ButtonStyle.Danger)
+          );
+          rows.push(row);
+          // limit rows to 10 to avoid too many components
+          if (rows.length >= 10) break;
+        }
+        rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('music_menu').setLabel('← Назад').setStyle(ButtonStyle.Danger)));
+        await interaction.update({ embeds: [embed], components: rows }).catch(() => {});
+      } catch (e) { console.error('music_pl_open error', e); try { await interaction.reply({ content: 'Ошибка при открытии плейлиста.', ephemeral: true }); } catch(ignore){} }
+      return;
+    }
+
+    // Handle per-track actions in playlist: play single, move up/down, remove
+    if (customId && customId.startsWith('music_pl_')) {
+      try {
+        const parts = customId.split('_');
+        // format: music_pl_<action>_<guildId>_<playlistId>_<index>
+        const action = parts[2];
+        const guildId = parts[3];
+        const playlistId = parts[4];
+        const idxPart = parts.slice(5).join('_');
+        const index = parseInt(idxPart, 10);
+        const musicPlayer = require('../music/player2');
+        // Check permissions: owner or DJ or admin
+        const cfg = require('../config');
+        const memberObj = member || (guild ? await guild.members.fetch(user.id).catch(() => null) : null);
+        const isAdmin = memberObj && memberObj.roles && memberObj.roles.cache && cfg.adminRoles && cfg.adminRoles.some(rid => memberObj.roles.cache.has(rid));
+        const isDJ = memberObj && memberObj.roles && memberObj.roles.cache && cfg.djRoles && cfg.djRoles.some(rid => memberObj.roles.cache.has(rid));
+        const panelRec = db.get(`musicControl_${guild.id}`) || {};
+        const isOwner = panelRec && panelRec.owner && String(panelRec.owner) === String(user.id);
+        if (!isOwner && !isAdmin && !isDJ) return await interaction.reply({ content: 'У вас нет прав для редактирования плейлиста.', ephemeral: true });
+
+        if (action === 'playone') {
+          // play this single track immediately
+          const pls = await musicPlayer.getUserPersonalPlaylists(guild.id, user.id);
+          const pl = pls[playlistId];
+          if (!pl || !pl.tracks || !pl.tracks[index]) return await interaction.reply({ content: 'Трек не найден.', ephemeral: true });
+          const t = pl.tracks[index];
+          const voiceChannel = member && member.voice ? member.voice.channel : null;
+          if (!voiceChannel) return await interaction.reply({ content: 'Вы должны быть в голосовом канале.', ephemeral: true });
+          await musicPlayer.playNow(guild, voiceChannel, t.url || t.title, interaction.channel, user.id);
+          return await interaction.reply({ content: '▶️ Трек запущен.', ephemeral: true });
+        }
+        if (action === 'remove') {
+          const ok = await musicPlayer.removeTrackByIndex(guild.id, user.id, playlistId, index);
+          if (ok) return await interaction.reply({ content: '🗑 Трек удалён из плейлиста.', ephemeral: true });
+          return await interaction.reply({ content: 'Не удалось удалить трек.', ephemeral: true });
+        }
+        if (action === 'moveup' || action === 'movedown') {
+          const toIndex = action === 'moveup' ? Math.max(0, index - 1) : Math.min(index + 1, 1000);
+          const ok = await musicPlayer.moveTrackInPlaylist(guild.id, user.id, playlistId, index, toIndex);
+          if (ok) return await interaction.reply({ content: '✅ Порядок треков обновлён.', ephemeral: true });
+          return await interaction.reply({ content: 'Не удалось переместить трек.', ephemeral: true });
+        }
+      } catch (e) { console.error('music_pl action error', e); try { await interaction.reply({ content: 'Ошибка при обработке действия с треком.', ephemeral: true }); } catch(ignore){} }
+      return;
+    }
+
     // RADIO MENU
     if (customId === 'music_radio') {
       const embed = createRadioListEmbed();

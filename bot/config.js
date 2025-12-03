@@ -19,3 +19,7 @@ module.exports = config;
 // Администраторские роли (комма-разделённый список в env или дефолтные две роли)
 const adminRoleEnv = process.env.ADMIN_ROLE_IDS || '1436485697392607303,1436486253066326067';
 config.adminRoles = adminRoleEnv.split(',').map(s => s.trim()).filter(Boolean);
+
+// DJ роли — пользователи с этими ролями могут управлять плеером (skip/stop/manage playlists)
+const djRoleEnv = process.env.DJ_ROLE_IDS || '';
+config.djRoles = djRoleEnv.split(',').map(s => s.trim()).filter(Boolean);

@@ -99,6 +99,18 @@ function createPlaylistsEmbed(playlists) {
   return embed;
 }
 
+function createPlaylistDetailEmbed(playlist) {
+  const embed = new EmbedBuilder()
+    .setTitle(`🎼 Плейлист — ${playlist.name || 'Без названия'}`)
+    .setColor(0x8E44AD)
+    .setDescription((playlist.tracks && playlist.tracks.length) ? `Треков: ${playlist.tracks.length}` : 'Плейлист пуст');
+  if (playlist.tracks && playlist.tracks.length) {
+    const lines = playlist.tracks.slice(0, 30).map((t, i) => `**${i+1}.** ${t.title || t.url || 'Неизвестно'}`);
+    embed.addFields({ name: 'Треки', value: lines.join('\n') });
+  }
+  return embed;
+}
+
 function formatTime(ms) {
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);
@@ -153,6 +165,7 @@ module.exports = {
   createHistoryEmbed,
   createFavoritesEmbed,
   createPlaylistsEmbed,
+  createPlaylistDetailEmbed,
   formatTime,
   createWeeklyTopEmbed,
   createMusicLogsEmbed

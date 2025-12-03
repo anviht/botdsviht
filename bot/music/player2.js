@@ -282,6 +282,25 @@ async function findYouTubeUrl(query) {
     // Try direct search and collect candidates
     let r = await yts(searchQuery);
     let vids = r && r.videos && r.videos.length ? r.videos.filter(v => !v.live && v.seconds > 0) : [];
+    // Prefer music-like videos: filter out very long videos and obvious non-music results
+    const blacklist = ['full album', 'full song', 'full mix', 'album', 'movie', 'episode', 'podcast', 'interview', 'documentary', 'soundtrack', 'live', 'mashup', 'mix', 'cover', 'karaoke'];
+    const queryLower = (query || '').toLowerCase();
+    const prefersLong = blacklist.some(w => queryLower.includes(w));
+    vids = vids.filter(v => {
+      try {
+        const t = (v.title || '').toLowerCase();
+        const seconds = v.seconds || 0;
+        // Exclude very long videos unless query explicitly asks for them
+        if (!prefersLong && seconds > 600) return false;
+        // Exclude titles containing blacklist terms unless query explicitly requests them
+        for (const b of blacklist) {
+          if (!prefersLong && t.includes(b)) return false;
+        }
+        return true;
+      } catch (e) { return false; }
+    });
+    // Sort by duration ascending to prefer typical song lengths
+    vids.sort((a, b) => (a.seconds || 0) - (b.seconds || 0));
     
     // Try adding 'audio' keyword if nothing found
     if (!vids.length) {
@@ -1018,13 +1037,38 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
         }
       } catch (e) { console.warn('release-after check failed', e && e.message ? e.message : e); }
 
-      // clear current but keep connection alive until explicit stop
-      state.current = null;
-      if (state.queue.length > 0) {
-        const next = state.queue.shift();
-        await saveQueueForGuild(guild.id);
-        // pass along the guild owner as null for queued items
-        playNow(guild, voiceChannel, next.query, textChannel, userId);
+      // handle repeat/shuffle settings
+      try {
+        const settings = getSettings(guild.id) || {};
+        const repeat = settings.repeat || false;
+        const shuffle = settings.shuffle || false;
+
+        if (repeat && state.current && state.current.url) {
+          // replay same track
+          const replayQuery = state.current.url || state.current.title;
+          // small delay to avoid tight loop
+          setTimeout(() => {
+            try { playNow(guild, voiceChannel, replayQuery, textChannel, state.current && state.current.owner ? state.current.owner : null); } catch (e) {}
+          }, 300);
+          return;
+        }
+
+        // clear current and advance queue
+        state.current = null;
+        if (state.queue.length > 0) {
+          let next = null;
+          if (shuffle) {
+            const idx = Math.floor(Math.random() * state.queue.length);
+            next = state.queue.splice(idx, 1)[0];
+          } else {
+            next = state.queue.shift();
+          }
+          await saveQueueForGuild(guild.id);
+          // pass along the guild owner as null for queued items
+          playNow(guild, voiceChannel, next.query, textChannel, userId);
+        }
+      } catch (e) {
+        console.warn('idle handler repeat/shuffle failed', e && e.message);
       }
       // do NOT destroy voice connection here; keep it connected until stop() is called
     });
@@ -1573,6 +1617,77 @@ async function playPlaylist(guild, voiceChannel, guildId, userId, playlistId, te
   }
 }
 
+// Remove track by index from playlist
+async function removeTrackByIndex(guildId, userId, playlistId, index) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    const key = `${guildId}_${userId}`;
+    if (music.playlists && music.playlists[key] && music.playlists[key][playlistId]) {
+      const tracks = music.playlists[key][playlistId].tracks || [];
+      if (index >= 0 && index < tracks.length) {
+        tracks.splice(index, 1);
+        music.playlists[key][playlistId].tracks = tracks;
+        await db.set('music', music);
+        return true;
+      }
+    }
+    return false;
+  } catch (e) { console.warn('removeTrackByIndex failed', e && e.message); return false; }
+}
+
+// Move track within playlist
+async function moveTrackInPlaylist(guildId, userId, playlistId, fromIndex, toIndex) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    const key = `${guildId}_${userId}`;
+    if (music.playlists && music.playlists[key] && music.playlists[key][playlistId]) {
+      const tracks = music.playlists[key][playlistId].tracks || [];
+      if (fromIndex >= 0 && fromIndex < tracks.length && toIndex >= 0 && toIndex <= tracks.length) {
+        const [item] = tracks.splice(fromIndex, 1);
+        tracks.splice(toIndex, 0, item);
+        music.playlists[key][playlistId].tracks = tracks;
+        await db.set('music', music);
+        return true;
+      }
+    }
+    return false;
+  } catch (e) { console.warn('moveTrackInPlaylist failed', e && e.message); return false; }
+}
+
+// Toggle repeat (boolean) for guild
+async function toggleRepeat(guildId) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    music.settings = music.settings || {};
+    const st = music.settings[guildId] || {};
+    st.repeat = !st.repeat;
+    music.settings[guildId] = st;
+    await db.set('music', music);
+    return st.repeat;
+  } catch (e) { console.warn('toggleRepeat failed', e && e.message); return false; }
+}
+
+// Toggle shuffle (boolean) for guild
+async function toggleShuffle(guildId) {
+  try {
+    await db.ensureReady();
+    const music = db.get('music') || {};
+    music.settings = music.settings || {};
+    const st = music.settings[guildId] || {};
+    st.shuffle = !st.shuffle;
+    music.settings[guildId] = st;
+    await db.set('music', music);
+    return st.shuffle;
+  } catch (e) { console.warn('toggleShuffle failed', e && e.message); return false; }
+}
+
+function getSettings(guildId) {
+  try { const music = db.get('music') || {}; music.settings = music.settings || {}; return music.settings[guildId] || {}; } catch (e) { return {}; }
+}
+
 // Получить топ песен за неделю
 async function getWeeklyTopTracks(guildId, limit = 10) {
   try {
@@ -1602,11 +1717,31 @@ function getCurrentTrack(guildId) {
   } catch (e) { console.error('getCurrentTrack failed', e && e.message); return null; }
 }
 
+function getQueue(guildId) {
+  try {
+    const state = players.get(guildId);
+    if (!state) return [];
+    return Array.isArray(state.queue) ? state.queue : [];
+  } catch (e) { console.error('getQueue failed', e && e.message); return []; }
+}
+
+function getProgress(guildId) {
+  try {
+    const state = players.get(guildId);
+    if (!state || !state.current) return { elapsed: 0, duration: 0 };
+    const duration = state.current.durationMs || 0;
+    const elapsed = state._progressElapsed || (state._progressStart ? (Date.now() - state._progressStart) : 0);
+    return { elapsed: Math.max(0, elapsed), duration: duration };
+  } catch (e) { console.error('getProgress failed', e && e.message); return { elapsed: 0, duration: 0 }; }
+}
+
 module.exports = { 
   playNow, playRadio, addToQueue, stop, skip, isPlaying, changeVolume, findYouTubeUrl,
   addToHistory, getHistory, addToFavorites, getFavorites, removeFromFavorites,
   createPlaylist, addTrackToPlaylist, getPlaylists, deletePlaylist, removeTrackFromPlaylist,
   getLastTrack, saveLastTrack, enhancedSearch, getRecommendations,
   unlockAchievement, getAchievements, getUserPersonalPlaylists, playPlaylist,
-  getWeeklyTopTracks, getMusicLogs, pause, resume, getCurrentTrack
+  getWeeklyTopTracks, getMusicLogs, pause, resume, getCurrentTrack, getQueue,
+  removeTrackByIndex, moveTrackInPlaylist, toggleRepeat, toggleShuffle, getSettings
+  , getProgress
 };
