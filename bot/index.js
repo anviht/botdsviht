@@ -309,16 +309,19 @@ client.on('interactionCreate', async (interaction) => {
       // Custom music search modal: find and play
       if (interaction.customId === 'music_search_modal') {
         try {
+          // Defer immediately to avoid timeout
+          await interaction.deferReply({ ephemeral: true });
+          
           const songName = interaction.fields.getTextInputValue('song_name').slice(0, 200);
           const guild = interaction.guild;
           const member = interaction.member || (guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null);
           const voiceChannel = member && member.voice ? member.voice.channel : null;
           if (!voiceChannel) {
-            await safeReply(interaction, { content: '❌ Вы не в голосовом канале.', ephemeral: true });
+            await interaction.editReply({ content: '❌ Вы не в голосовом канале.', ephemeral: true });
             return;
           }
           // Show searching message
-          await safeReply(interaction, { content: `🔎 Ищу варианты для "${songName}"...`, ephemeral: true });
+          await interaction.editReply({ content: `🔎 Ищу варианты для "${songName}"...`, ephemeral: true });
           
           // Search for candidates
           const searchResults = await musicPlayer.findYouTubeUrl(songName).catch(() => null);
@@ -393,7 +396,10 @@ client.on('interactionCreate', async (interaction) => {
             try { await interaction.channel.send({ embeds: [resultEmbed], components }); } catch (e2) {}
           }
           return;
-        } catch (e) { console.error('music_search_modal submit error', e); return await safeReply(interaction, { content: 'Ошибка при поиске песни.', ephemeral: true }); }
+        } catch (e) { 
+          console.error('music_search_modal submit error', e); 
+          try { await interaction.editReply({ content: 'Ошибка при поиске песни.', ephemeral: true }); } catch (e2) { console.warn('editReply failed', e2); }
+        }
       }
       // Custom music queue modal: add to queue
       if (interaction.customId === 'music_queue_modal') {
