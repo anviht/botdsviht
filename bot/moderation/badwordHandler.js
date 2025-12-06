@@ -169,17 +169,7 @@ async function checkMessage(message, client) {
       console.warn('Failed to send DM to user:', e.message);
     }
 
-    // Запланировать снятие мьюта через 1 минуту
-    setTimeout(async () => {
-      try {
-        const updatedMember = await guild.members.fetch(message.author.id).catch(() => null);
-        if (updatedMember && mutedRole) {
-          await updatedMember.roles.remove(mutedRole, 'Автоматическое снятие мьюта (1 минута истекла)').catch(() => null);
-        }
-      } catch (e) {
-        console.error('Failed to unmute member:', e.message);
-      }
-    }, muteTime);
+    // (Снятие мьюта планируется и обрабатывается далее через запись в DB и локальный таймер)
 
     // Сохраняем в логи БД
     try {
