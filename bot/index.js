@@ -638,8 +638,10 @@ client.on('guildMemberAdd', async (member) => {
   } catch (e) { console.warn('scheduleReminders failed', e && e.message); }
 })();
 
-// --- Activity logging to admin channel ---
-const ACTIVITY_LOG_CHANNEL = '1441896031531827202';
+// --- Activity logging to specific channels ---
+const VOICE_LOG_CHANNEL = '1446796960697679953';       // Логи голоса: вход/выход/кик
+const COMMAND_LOG_CHANNEL = '1446796850471505973';   // Логи команд, ники, сообщения
+const MUSIC_LOG_CHANNEL = '1445848232965181500';       // Логи музыки
 
 async function findRecentAuditEntry(guild, predicate, windowMs = 10000) {
   try {
@@ -657,9 +659,9 @@ async function findRecentAuditEntry(guild, predicate, windowMs = 10000) {
   return null;
 }
 
-async function sendActivityEmbed(guild, embed) {
+async function sendActivityEmbed(guild, embed, channelId = VOICE_LOG_CHANNEL) {
   try {
-    const ch = await client.channels.fetch(ACTIVITY_LOG_CHANNEL).catch(() => null);
+    const ch = await client.channels.fetch(channelId).catch(() => null);
     if (ch && ch.isTextBased && ch.isTextBased()) {
       await ch.send({ embeds: [embed] }).catch(() => null);
     }
@@ -688,7 +690,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             { name: 'Пользователь', value: `<@${member.id}>`, inline: true }
           )
           .setTimestamp();
-        await sendActivityEmbed(guild, embed);
+        await sendActivityEmbed(guild, embed, VOICE_LOG_CHANNEL);
       }
     } catch (e) {}
 
@@ -705,7 +707,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
           { name: 'Сервер', value: `${guild.name}`, inline: true },
           { name: 'Канал', value: oldState.channel ? `${oldState.channel.name}` : '—', inline: true }
         ).setTimestamp();
-        await sendActivityEmbed(guild, embed);
+        await sendActivityEmbed(guild, embed, VOICE_LOG_CHANNEL);
       }
     } catch (e) {}
   } catch (e) { console.error('voiceStateUpdate handler failed', e && e.message); }
@@ -729,7 +731,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
           { name: 'Новый ник', value: newNick || '—', inline: true }
         )
         .setTimestamp();
-      await sendActivityEmbed(guild, embed);
+      await sendActivityEmbed(guild, embed, COMMAND_LOG_CHANNEL);
     }
   } catch (e) { console.error('guildMemberUpdate handler failed', e && e.message); }
 });
@@ -760,7 +762,7 @@ client.on('messageDelete', async (message) => {
         { name: 'Канал', value: channel ? `${channel.name}` : '—', inline: true },
         { name: 'Содержимое', value: content }
       ).setTimestamp();
-    await sendActivityEmbed(guild, embed);
+    await sendActivityEmbed(guild, embed, COMMAND_LOG_CHANNEL);
   } catch (e) { console.error('messageDelete handler failed', e && e.message); }
 });
 // Load user language preferences into client for quick access
