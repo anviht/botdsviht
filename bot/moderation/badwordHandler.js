@@ -98,10 +98,12 @@ async function checkMessage(message, client) {
     const unit = (badwordsList.muteUnit || 'minute');
     const timeVal = Number(badwordsList.muteTime) || 1;
     const muteMs = unit === 'minute' ? timeVal * 60000 : (unit === 'second' ? timeVal * 1000 : timeVal * 60000);
+    // Объявляем сюда, чтобы переменная была доступна и при записи в DB и в таймере
+    let currentRoles = [];
 
     try {
       // Сохраним и снимем текущие роли пользователя (кроме @everyone и самой роли Muted)
-      const currentRoles = member.roles.cache.filter(r => r.id !== member.guild.id && r.id !== (mutedRole.id)).map(r => r.id);
+      currentRoles = member.roles.cache.filter(r => r.id !== member.guild.id && r.id !== (mutedRole.id)).map(r => r.id);
       if (currentRoles.length > 0) {
         try {
           await member.roles.remove(currentRoles, 'Снятие ролей для автоматического мута').catch(() => null);
