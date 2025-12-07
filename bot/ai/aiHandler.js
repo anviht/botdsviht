@@ -5,8 +5,7 @@ const chatHistory = require('./chatHistory');
 const CONTROL_ROLE_ID = '1436485697392607303';
 function makeButtons() {
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('ai_register').setLabel('Зарегистрировать ИИ').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('ai_new').setLabel('Создать новую ветку').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('ai_new').setLabel('Создать ветку').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('ai_list').setLabel('Мои ветки').setStyle(ButtonStyle.Success)
   );
   return [row];
@@ -81,7 +80,7 @@ async function handleAiButton(interaction) {
 
         if (thread) {
           // persist the chat record now that thread exists
-          all[userId] = { chatId, status: 'open', createdAt: new Date().toISOString() };
+          all[userId] = { chatId, status: 'open', createdAt: new Date().toISOString(), userId: interaction.user.id };
           try { await thread.members.add(interaction.user.id).catch(() => null); } catch (e) { /* ignore */ }
           all[userId].threadId = thread.id;
           all[userId].threadChannel = interaction.message.channel.id;
@@ -99,7 +98,7 @@ async function handleAiButton(interaction) {
           } catch (e) {}
           // Send a welcome message inside thread so it appears active and the user sees it
           try {
-            const welcome = `Привет <@${interaction.user.id}>! Это приватная ветка ИИ. Пишите здесь — бот будет отвечать в этой ветке.`;
+            const welcome = `Привет! Это ваша приватная ветка ИИ. Пишите здесь — бот будет отвечать в этой ветке.`;
             await thread.send({ content: welcome }).catch(() => null);
           } catch (e) { /* ignore */ }
         } else {
@@ -123,25 +122,36 @@ async function handleAiButton(interaction) {
     }
 
     if (id === 'ai_list') {
-      // Show list of user's chats with select menu
-      const userChats = all[userId];
-      if (!userChats) {
-        await replySafe({ content: 'У вас нет ветки. Нажмите "Зарегистрировать ИИ" или "Создать новую ветку".', ephemeral: true });
+      // Show list of user's chats (or all chats if guild owner) with select menu
+      const isGuildOwner = String(interaction.user.id) === String(interaction.guild.ownerId);
+      const threadsToShow = isGuildOwner ? all : { [userId]: all[userId] };
+      
+      // Check if there are any chats
+      if (Object.keys(threadsToShow).length === 0) {
+        const msgText = isGuildOwner ? 'Нет активных веток ИИ на сервере.' : 'У вас нет ветки. Нажмите "Создать ветку".';
+        await replySafe({ content: msgText, ephemeral: true });
         return;
       }
 
       const select = new StringSelectMenuBuilder()
         .setCustomId(`ai_chat_select_${Date.now()}`)
-        .setPlaceholder('Выберите ветку')
-        .addOptions(
-          new StringSelectMenuOptionBuilder()
-            .setLabel(`Ветка: ${userChats.chatId}`)
-            .setValue('main')
-            .setDescription(`Статус: ${userChats.status || 'open'}`)
-        );
+        .setPlaceholder('Выберите ветку');
+
+      // Add options for each chat
+      for (const [uId, chat] of Object.entries(threadsToShow)) {
+        if (chat) {
+          select.addOptions(
+            new StringSelectMenuOptionBuilder()
+              .setLabel(`${chat.chatId}`)
+              .setValue(uId)  // Store userId as value so we can fetch the right chat later
+              .setDescription(`Статус: ${chat.status || 'open'}`)
+          );
+        }
+      }
 
       const row = new ActionRowBuilder().addComponents(select);
-      await replySafe({ content: 'Выберите ветку для управления:', components: [row], ephemeral: true });
+      const listType = isGuildOwner ? 'ветки сервера' : 'ваши ветки';
+      await replySafe({ content: `Выберите из ${listType}:`, components: [row], ephemeral: true });
       return;
     }
 
@@ -173,7 +183,7 @@ async function handleAiButton(interaction) {
           return;
         }
         // persist and add only the user
-        all[userId] = { chatId, status: 'open', createdAt: new Date().toISOString(), threadId: thread.id, threadChannel: interaction.message.channel.id };
+        all[userId] = { chatId, status: 'open', createdAt: new Date().toISOString(), threadId: thread.id, threadChannel: interaction.message.channel.id, userId: interaction.user.id };
         try { await thread.members.add(interaction.user.id).catch(() => null); } catch (e) {}
         // Set permissions: user + owner + admins can view
         try {
@@ -184,7 +194,7 @@ async function handleAiButton(interaction) {
             try { await thread.permissionOverwrites.edit(CONTROL_ROLE_ID, { ViewChannel: true, SendMessages: false }).catch(() => null); } catch (e) {}
           }
         } catch (e) {}
-        try { await thread.send({ content: `Привет <@${interaction.user.id}>! Это новая приватная ветка ИИ.` }).catch(() => null); } catch (e) {}
+        try { await thread.send({ content: `Привет! Это ваша приватная ветка ИИ. Пишите сообщения — бот будет отвечать здесь.` }).catch(() => null); } catch (e) {}
         await db.set('aiChats', all);
         try { chatHistory.clearHistory(`${userId}:${chatId}`); } catch (e) {}
         await replySafe({ content: `Создана новая ветка: ${chatId} — тред: <#${thread.id}>`, ephemeral: true });

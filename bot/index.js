@@ -455,9 +455,10 @@ client.on('interactionCreate', async (interaction) => {
       if (interaction.customId && interaction.customId.startsWith('ai_chat_select_')) {
         try {
           await db.ensureReady();
-          const userId = String(interaction.user.id);
           const allChats = db.get('aiChats') || {};
-          const userChat = allChats[userId];
+          // Get the userId from the select menu value (stored when building the menu)
+          const selectedUserId = String(interaction.values[0]);
+          const userChat = allChats[selectedUserId];
           
           if (!userChat) {
             await safeReply(interaction, { content: '❌ Ветка не найдена.', ephemeral: true });
@@ -467,12 +468,12 @@ client.on('interactionCreate', async (interaction) => {
           // Show action buttons: перейти или закрыть
           const actionRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-              .setCustomId(`ai_action_goto_${userId}`)
+              .setCustomId(`ai_action_goto_${selectedUserId}`)
               .setLabel('Перейти в ветку')
               .setStyle(ButtonStyle.Primary)
               .setEmoji('🚀'),
             new ButtonBuilder()
-              .setCustomId(`ai_action_close_${userId}`)
+              .setCustomId(`ai_action_close_${selectedUserId}`)
               .setLabel('Закрыть ветку')
               .setStyle(ButtonStyle.Danger)
               .setEmoji('❌')
