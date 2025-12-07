@@ -189,8 +189,49 @@ client.on('interactionCreate', async (interaction) => {
         try { await handlePriceButton(interaction); } catch (err) { console.error('Price button error', err); await safeReply(interaction, { content: 'Ошибка при обработке прайса.', ephemeral: true }); }
         return;
       }
-      // AI buttons (ai_register, ai_close, ai_new, ai_delete)
+      // AI buttons (ai_register, ai_new, ai_list, ai_action_*)
       if (interaction.customId && interaction.customId.startsWith('ai_')) {
+        // Handle AI action buttons (goto, close)
+        if (interaction.customId.startsWith('ai_action_goto_') || interaction.customId.startsWith('ai_action_close_')) {
+          try {
+            await db.ensureReady();
+            const userId = String(interaction.user.id);
+            const allChats = db.get('aiChats') || {};
+            const userChat = allChats[userId];
+            
+            if (!userChat) {
+              await safeReply(interaction, { content: '❌ Ветка не найдена.', ephemeral: true });
+              return;
+            }
+
+            if (interaction.customId.startsWith('ai_action_goto_')) {
+              // Перейти в ветку
+              if (!userChat.threadId) {
+                await safeReply(interaction, { content: '❌ Тред не найден.', ephemeral: true });
+                return;
+              }
+              await safeReply(interaction, { content: `🚀 Ссылка на ветку: <#${userChat.threadId}>`, ephemeral: true });
+            } else if (interaction.customId.startsWith('ai_action_close_')) {
+              // Закрыть ветку
+              if (userChat.threadId) {
+                const thread = await client.channels.fetch(userChat.threadId).catch(() => null);
+                if (thread && typeof thread.setArchived === 'function') {
+                  try { await thread.setArchived(true); } catch (e) { console.warn('Failed to archive thread', e); }
+                }
+              }
+              userChat.status = 'closed';
+              userChat.closedAt = new Date().toISOString();
+              await db.set('aiChats', allChats);
+              await safeReply(interaction, { content: `✅ Ветка ${userChat.chatId} закрыта.`, ephemeral: true });
+            }
+          } catch (err) {
+            console.error('AI action button error', err);
+            await safeReply(interaction, { content: 'Ошибка при выполнении действия.', ephemeral: true });
+          }
+          return;
+        }
+
+        // Обработка основных кнопок (регистрация, создание новой, список)
         try { await handleAiButton(interaction); } catch (err) { console.error('AI button error', err); await safeReply(interaction, { content: 'Ошибка при обработке кнопки ИИ.', ephemeral: true }); }
         return;
       }
@@ -410,6 +451,46 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
     if (interaction.isStringSelectMenu && interaction.isStringSelectMenu()) {
+      // Handle AI chat select menu (choose chat from list, then show action buttons)
+      if (interaction.customId && interaction.customId.startsWith('ai_chat_select_')) {
+        try {
+          await db.ensureReady();
+          const userId = String(interaction.user.id);
+          const allChats = db.get('aiChats') || {};
+          const userChat = allChats[userId];
+          
+          if (!userChat) {
+            await safeReply(interaction, { content: '❌ Ветка не найдена.', ephemeral: true });
+            return;
+          }
+
+          // Show action buttons: перейти или закрыть
+          const actionRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`ai_action_goto_${userId}`)
+              .setLabel('Перейти в ветку')
+              .setStyle(ButtonStyle.Primary)
+              .setEmoji('🚀'),
+            new ButtonBuilder()
+              .setCustomId(`ai_action_close_${userId}`)
+              .setLabel('Закрыть ветку')
+              .setStyle(ButtonStyle.Danger)
+              .setEmoji('❌')
+          );
+
+          const embed = new EmbedBuilder()
+            .setTitle('📌 Управление веткой')
+            .setDescription(`**ID:** ${userChat.chatId}\n**Статус:** ${userChat.status || 'open'}`)
+            .setColor(0x0055ff)
+            .setFooter({ text: 'Выберите действие' });
+
+          await safeReply(interaction, { embeds: [embed], components: [actionRow], ephemeral: true });
+        } catch (e) {
+          console.error('AI chat select error', e);
+          await safeReply(interaction, { content: '❌ Ошибка при выборе ветки.', ephemeral: true });
+        }
+        return;
+      }
       // Handle music search select menu
       if (interaction.customId && interaction.customId.startsWith('music_search_select_')) {
         try {

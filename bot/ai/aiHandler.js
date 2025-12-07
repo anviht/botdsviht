@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelType } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelType, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const db = require('../libs/db');
 const chatHistory = require('./chatHistory');
 
@@ -7,8 +7,7 @@ function makeButtons() {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('ai_register').setLabel('Зарегистрировать ИИ').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('ai_new').setLabel('Создать новую ветку').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('ai_close').setLabel('Закрыть ветку').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('ai_delete').setLabel('Удалить старую').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('ai_list').setLabel('Мои ветки').setStyle(ButtonStyle.Success)
   );
   return [row];
 }
@@ -118,16 +117,26 @@ async function handleAiButton(interaction) {
       return;
     }
 
-    if (id === 'ai_close') {
-      const existing = all[userId];
-      if (!existing || existing.status !== 'open') {
-        await replySafe({ content: 'У вас нет открытой ветки для закрытия.', ephemeral: true });
+    if (id === 'ai_list') {
+      // Show list of user's chats with select menu
+      const userChats = all[userId];
+      if (!userChats) {
+        await replySafe({ content: 'У вас нет ветки. Нажмите "Зарегистрировать ИИ" или "Создать новую ветку".', ephemeral: true });
         return;
       }
-      existing.status = 'closed';
-      existing.closedAt = new Date().toISOString();
-      await db.set('aiChats', all);
-      await replySafe({ content: `Ветка ${existing.chatId} закрыта.`, ephemeral: true });
+
+      const select = new StringSelectMenuBuilder()
+        .setCustomId(`ai_chat_select_${Date.now()}`)
+        .setPlaceholder('Выберите ветку')
+        .addOptions(
+          new StringSelectMenuOptionBuilder()
+            .setLabel(`Ветка: ${userChats.chatId}`)
+            .setValue('main')
+            .setDescription(`Статус: ${userChats.status || 'open'}`)
+        );
+
+      const row = new ActionRowBuilder().addComponents(select);
+      await replySafe({ content: 'Выберите ветку для управления:', components: [row], ephemeral: true });
       return;
     }
 
@@ -173,14 +182,7 @@ async function handleAiButton(interaction) {
       }
     }
 
-    if (id === 'ai_delete') {
-      const existing = all[userId];
-      if (!existing) { await replySafe({ content: 'У вас нет ветки для удаления.', ephemeral: true }); return; }
-      delete all[userId];
-      await db.set('aiChats', all);
-      await replySafe({ content: `Ваша ветка удалена.`, ephemeral: true });
-      return;
-    }
+
 
     // Unknown ai action
     await replySafe({ content: 'Неизвестная операция AI.', ephemeral: true });
