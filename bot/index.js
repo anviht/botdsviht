@@ -1373,48 +1373,12 @@ client.once('ready', async () => {
     await ensureMenuPanel(client);
     setInterval(async () => { try { await ensureMenuPanel(client); } catch (e) { /* ignore */ } }, 5 * 60 * 1000);
   } catch (e) { console.warn('Failed to ensure menu panel on ready:', e && e.message ? e.message : e); }
+  // Old control panel disabled - using new startup message instead
   // Post bot management panel with music — robust ensure/edit/post helper
   try {
     const CONTROL_PANEL_CHANNEL_ID = '1443194196172476636';
-    const panelCheckKey = 'controlPanelPosted';
-    const { createMainControlPanelEmbed, getMainControlRow } = require('./music-interface/controlPanelEmbeds');
-
-    async function ensureControlPanel() {
-      try {
-        const controlChannel = await client.channels.fetch(CONTROL_PANEL_CHANNEL_ID).catch(() => null);
-        if (!controlChannel) { console.warn('Control panel channel not found:', CONTROL_PANEL_CHANNEL_ID); return; }
-
-        const mainEmbed = createMainControlPanelEmbed();
-        const controlRow = getMainControlRow();
-
-        const rec = db.get(panelCheckKey);
-        if (rec && rec.channelId === CONTROL_PANEL_CHANNEL_ID && rec.messageId) {
-          const existing = await controlChannel.messages.fetch(rec.messageId).catch(() => null);
-          if (existing) {
-            await existing.edit({ embeds: [mainEmbed], components: [controlRow] }).catch(() => null);
-            console.log('Updated existing control panel message');
-            try {
-              const musicKey = `musicControl_${controlChannel.guild.id}`;
-              const mrec = db.get(musicKey);
-              if (!mrec || !mrec.messageId) await db.set(musicKey, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: existing.id });
-            } catch (e) { /* ignore */ }
-            return;
-          }
-        }
-
-        // Post a fresh message (either no record or existing was deleted)
-        const msg = await controlChannel.send({ embeds: [mainEmbed], components: [controlRow] }).catch(() => null);
-        if (msg && db && db.set) {
-          await db.set(panelCheckKey, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: msg.id, postedAt: Date.now() });
-          try { await db.set(`musicControl_${controlChannel.guild.id}`, { channelId: CONTROL_PANEL_CHANNEL_ID, messageId: msg.id }); } catch (e) { /* ignore */ }
-        }
-        console.log('Posted control panel to', CONTROL_PANEL_CHANNEL_ID);
-      } catch (err) { console.warn('ensureControlPanel error', err && err.message ? err.message : err); }
-    }
-
-    // Run immediately and schedule periodic checks to keep the panel present/updated
-    await ensureControlPanel();
-    setInterval(async () => { try { await ensureControlPanel(); } catch (e) { /* ignore periodic */ } }, 5 * 60 * 1000);
+    // Old ensureControlPanel function disabled - startup message now handles this
+    // Control panel message is now only the "Viht player v.4214" startup message
   } catch (e) { console.warn('Failed to ensure control panel on ready:', e && e.message ? e.message : e); }
   // After control panel: post price / information panel
   try {
