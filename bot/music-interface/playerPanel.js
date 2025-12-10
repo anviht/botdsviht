@@ -13,7 +13,6 @@ function buildOccupyEmbed() {
     .setTitle('🎵 Viht player v.4214')
     .setColor(0x2C3E50)
     .setDescription('🎶 Добро пожаловать в музыкальный плеер!\n\n✨ Нажмите кнопку ниже, чтобы занять плеер и начать слушать музыку.')
-    .setThumbnail('')
     .setFooter({ text: '🎵 Viht Audio System' })
     .setTimestamp();
 }
