@@ -143,9 +143,10 @@ async function handleChannelSelect(interaction) {
         )
       );
 
-    await interaction.showModal(modal).catch(() => null);
+    await interaction.showModal(modal);
   } catch (e) {
     console.error('[POST_MANAGER] handleChannelSelect error:', e.message);
+    await interaction.reply({ content: '❌ Ошибка: ' + e.message, ephemeral: true }).catch(() => null);
   }
 }
 
@@ -160,6 +161,7 @@ async function handleTitleModal(interaction) {
     }
 
     session.title = interaction.fields.getTextInputValue('post_title');
+    console.log('[POST_MANAGER] Title set:', session.title);
 
     // Show content input modal
     const modal = new ModalBuilder()
@@ -177,9 +179,10 @@ async function handleTitleModal(interaction) {
         )
       );
 
-    await interaction.showModal(modal).catch(() => null);
+    await interaction.showModal(modal);
   } catch (e) {
     console.error('[POST_MANAGER] handleTitleModal error:', e.message);
+    await interaction.reply({ content: '❌ Ошибка: ' + e.message, ephemeral: true }).catch(() => null);
   }
 }
 
@@ -194,6 +197,7 @@ async function handleContentModal(interaction) {
     }
 
     session.content = interaction.fields.getTextInputValue('post_content');
+    console.log('[POST_MANAGER] Content set:', session.content);
 
     // Show color and image options
     const colorSelect = new ActionRowBuilder()
@@ -228,9 +232,10 @@ async function handleContentModal(interaction) {
       content: '**Шаг 3: Оформление**\nВыбери цвет и прикрепи фото (опционально)',
       components: [colorSelect, photoButtons],
       ephemeral: true
-    }).catch(() => null);
+    });
   } catch (e) {
     console.error('[POST_MANAGER] handleContentModal error:', e.message);
+    await interaction.reply({ content: '❌ Ошибка: ' + e.message, ephemeral: true }).catch(() => null);
   }
 }
 
