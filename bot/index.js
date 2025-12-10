@@ -760,14 +760,10 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
       // Post Manager modals
-      if (interaction.customId && (interaction.customId.startsWith('post_') && (interaction.customId.includes('modal') || interaction.customId.includes('select')))) {
+      if (interaction.customId && interaction.customId.startsWith('post_') && interaction.customId.includes('modal')) {
         try { 
-          if (interaction.customId.includes('select')) {
-            await handlePostManagerSelect(interaction);
-          } else {
-            await handlePostManagerModal(interaction);
-          }
-        } catch (err) { console.error('Post manager modal/select error', err); await safeReply(interaction, { content: 'Ошибка при обработке формы.', ephemeral: true }); }
+          await handlePostManagerModal(interaction);
+        } catch (err) { console.error('Post manager modal error', err); await safeReply(interaction, { content: 'Ошибка при обработке формы.', ephemeral: true }); }
         return;
       }
     }
