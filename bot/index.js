@@ -56,7 +56,7 @@ if (fs.existsSync(commandsPath)) {
 // db already required above
 const { sendPrompt } = require('./ai/vihtAi');
 const musicPlayer = require('./music/player2');
-const { handleMusicButton, ensureMusicControlPanel, updateControlMessageWithError } = require('./music-interface/musicHandler');
+const { handleMusicButton, updateControlMessageWithError } = require('./music-interface/musicHandler');
 const { handleControlPanelButton } = require('./music-interface/controlPanelHandler');
 const { handlePriceButton } = require('./price/priceHandler');
 const { handleAiButton, createAiPanelEmbed, makeButtons: makeAiButtons } = require('./ai/aiHandler');
@@ -414,14 +414,6 @@ client.on('interactionCreate', async (interaction) => {
           }
           const query = candidate.url || candidate.title || candidate;
           await safeReply(interaction, { content: `🎵 Начинаю воспроизведение "${(candidate.title || '').slice(0, 50)}"...`, ephemeral: true });
-          // Ensure control panel exists in desired channel (server control message)
-          try {
-            const controlChannelId = '1443194196172476636';
-            const controlCh = await client.channels.fetch(controlChannelId).catch(() => null);
-            if (controlCh && controlCh.guild && String(controlCh.guild.id) === String(guild.id)) {
-              try { await ensureMusicControlPanel(controlCh, cache.userId); } catch (e) { console.warn('ensureMusicControlPanel failed', e && e.message); }
-            }
-          } catch (e) {}
 
           // Try playing this candidate; if it fails, try next candidates from cache
           let played = false;
@@ -509,15 +501,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
           }
           await safeReply(interaction, { content: `🎵 Начинаю воспроизведение ${selectedIndices.length} трека(ов)...`, ephemeral: true });
-
-          // Ensure control panel exists in desired channel
-          try {
-            const controlChannelId = '1443194196172476636';
-            const controlCh = await client.channels.fetch(controlChannelId).catch(() => null);
-            if (controlCh && controlCh.guild && String(controlCh.guild.id) === String(guild.id)) {
-              try { await ensureMusicControlPanel(controlCh, cache.userId); } catch (e) { console.warn('ensureMusicControlPanel failed', e && e.message); }
-            }
-          } catch (e) {}
 
           // Add all selected tracks to queue and play first; if first fails try next selected
           let firstPlayed = false;
@@ -1075,27 +1058,7 @@ client.once('ready', async () => {
   await db.ensureReady();
   console.log('DB ready, proceeding with startup status report');
   
-  // Post "Плеер в разработке" startup message to control panel channel
-  const CONTROL_PANEL_CHANNEL_ID = '1443194196172476636';
-  try {
-    const controlChannel = await client.channels.fetch(CONTROL_PANEL_CHANNEL_ID).catch(() => null);
-    if (controlChannel && controlChannel.isTextBased && controlChannel.isTextBased()) {
-      const startupEmbed = new EmbedBuilder()
-        .setTitle('🎵 Viht player v.4214')
-        .setColor(0x2C3E50)
-        .setDescription('🎶 Добро пожаловать в музыкальный плеер!\n\n✨ Нажмите кнопку ниже, чтобы занять плеер и начать слушать музыку.')
-        .setThumbnail(client.user.displayAvatarURL({ size: 256 }))
-        .setFooter({ text: '🎵 Viht Audio System' })
-        .setTimestamp();
-      const occupyRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('music_register').setLabel('🎵 Занять плеер').setStyle(ButtonStyle.Primary)
-      );
-      await controlChannel.send({ embeds: [startupEmbed], components: [occupyRow] }).catch(() => null);
-      console.log('Control panel startup message posted to', CONTROL_PANEL_CHANNEL_ID);
-    }
-  } catch (e) {
-    console.warn('Failed to post control panel startup message:', e && e.message ? e.message : e);
-  }
+  // Control panel channel 1443194196172476636 removed - no messages posted there anymore
   // Auto-register slash commands if enabled via env
   try {
     const autoReg = process.env.AUTO_REGISTER_COMMANDS === 'true' || process.env.AUTO_REGISTER_COMMANDS === '1';
@@ -1373,13 +1336,6 @@ client.once('ready', async () => {
     await ensureMenuPanel(client);
     setInterval(async () => { try { await ensureMenuPanel(client); } catch (e) { /* ignore */ } }, 5 * 60 * 1000);
   } catch (e) { console.warn('Failed to ensure menu panel on ready:', e && e.message ? e.message : e); }
-  // Old control panel disabled - using new startup message instead
-  // Post bot management panel with music — robust ensure/edit/post helper
-  try {
-    const CONTROL_PANEL_CHANNEL_ID = '1443194196172476636';
-    // Old ensureControlPanel function disabled - startup message now handles this
-    // Control panel message is now only the "Viht player v.4214" startup message
-  } catch (e) { console.warn('Failed to ensure control panel on ready:', e && e.message ? e.message : e); }
   // After control panel: post price / information panel
   try {
     const PRICE_CHANNEL_ID = '1443194062269321357';
