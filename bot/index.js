@@ -1071,10 +1071,25 @@ client.once('ready', async () => {
   
   // Post Viht player v.4214 panel to control channel
   try {
-    await postPlayerMessage(client);
-    console.log('Posted Viht player panel');
+    console.log('[PLAYER] Starting postPlayerMessage...');
+    const result = await postPlayerMessage(client);
+    console.log('[PLAYER] postPlayerMessage result:', result ? 'SUCCESS' : 'FAILED');
   } catch (e) {
-    console.warn('Failed to post player panel:', e.message);
+    console.error('[PLAYER] Exception in postPlayerMessage:', e.message, e.stack);
+  }
+  
+  // Schedule periodic player panel refresh (every 5 minutes)
+  try {
+    setInterval(async () => {
+      try {
+        console.log('[PLAYER] Refreshing player panel...');
+        await postPlayerMessage(client);
+      } catch (e) {
+        console.warn('[PLAYER] Periodic refresh failed:', e.message);
+      }
+    }, 5 * 60 * 1000);
+  } catch (e) {
+    console.warn('[PLAYER] Failed to schedule periodic refresh:', e.message);
   }
   
   // Auto-register slash commands if enabled via env
