@@ -61,6 +61,7 @@ const { handleControlPanelButton } = require('./music-interface/controlPanelHand
 const { handlePriceButton } = require('./price/priceHandler');
 const { handleAiButton, createAiPanelEmbed, makeButtons: makeAiButtons } = require('./ai/aiHandler');
 const { ensureMenuPanel, handleMenuButton } = require('./menus/menuHandler');
+const { postPlayerMessage, handlePlayerPanelButton, handlePlayerPanelModal } = require('./music-interface/playerPanel');
 // optional helpers
 let handleReactionAdd = null;
 let handleReactionRemove = null;
@@ -238,6 +239,11 @@ client.on('interactionCreate', async (interaction) => {
       // Menu buttons
       if (interaction.customId && interaction.customId.startsWith('menu_')) {
         try { await handleMenuButton(interaction); } catch (err) { console.error('Menu button error', err); await safeReply(interaction, { content: 'Ошибка при обработке меню.', ephemeral: true }); }
+        return;
+      }
+      // Player panel buttons (Viht player v.4214)
+      if (interaction.customId && interaction.customId.startsWith('player_')) {
+        try { await handlePlayerPanelButton(interaction, client); } catch (err) { console.error('Player panel button error', err); await safeReply(interaction, { content: 'Ошибка при управлении плеером.', ephemeral: true }); }
         return;
       }
       // Music/Radio buttons
@@ -742,6 +748,11 @@ client.on('interactionCreate', async (interaction) => {
           return;
         } catch (e) { console.error('music_queue_modal submit error', e); return await safeReply(interaction, { content: 'Ошибка при добавлении в очередь.', ephemeral: true }); }
       }
+      // Player panel modals (search and queue)
+      if (interaction.customId && (interaction.customId.startsWith('player_search_modal_') || interaction.customId.startsWith('player_queue_modal_'))) {
+        try { await handlePlayerPanelModal(interaction, client); } catch (err) { console.error('Player panel modal error', err); await safeReply(interaction, { content: 'Ошибка при обработке формы.', ephemeral: true }); }
+        return;
+      }
     }
   } catch (err) { console.error('interactionCreate handler error', err); }
 });
@@ -1058,7 +1069,14 @@ client.once('ready', async () => {
   await db.ensureReady();
   console.log('DB ready, proceeding with startup status report');
   
-  // Control panel channel 1443194196172476636 removed - no messages posted there anymore
+  // Post Viht player v.4214 panel to control channel
+  try {
+    await postPlayerMessage(client);
+    console.log('Posted Viht player panel');
+  } catch (e) {
+    console.warn('Failed to post player panel:', e.message);
+  }
+  
   // Auto-register slash commands if enabled via env
   try {
     const autoReg = process.env.AUTO_REGISTER_COMMANDS === 'true' || process.env.AUTO_REGISTER_COMMANDS === '1';
