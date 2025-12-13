@@ -794,7 +794,7 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
       // Post Manager channel/color select
-      if (interaction.customId && interaction.customId.startsWith('post_')) {
+      if (interaction.customId && (interaction.customId.startsWith('post_') || interaction.customId.startsWith('pm_'))) {
         try { await handlePostManagerSelect(interaction); } catch (err) { console.error('Post manager select error', err); await safeReply(interaction, { content: 'Ошибка при выборе.', ephemeral: true }); }
         return;
       }
