@@ -3,6 +3,7 @@ const db = require('../libs/db');
 
 const PANEL_CHANNEL_ID = '1448413112423288903';
 const BOT_ID = '1441754848658981016';
+const PUBLISHER_ROLE_ID = '1441756621586829355';
 
 // In-memory session state for post creation
 const postSessions = new Map();
@@ -382,7 +383,7 @@ function buildPostPreview(session) {
     minute: '2-digit',
     second: '2-digit'
   });
-  embed.setFooter({ text: `Опубликовал <@${BOT_ID}> • ${timeStr}` });
+  embed.setFooter({ text: `Опубликовал <@&${PUBLISHER_ROLE_ID}> • ${timeStr}` });
   return embed;
 }
 
@@ -548,19 +549,33 @@ async function handlePostMessageInput(message) {
     // First message = title
     if (messageInput.stage === 'title') {
       session.title = message.content;
+      // Save attachment if present
+      if (message.attachments.size > 0) {
+        session.attachmentUrl = message.attachments.first().url;
+      }
       messageInput.stage = 'content';
       
       await message.react('✅');
-      await message.reply({
+      const botReply = await message.reply({
         content: `✅ Заголовок: **"${session.title}"**\n\n📝 Теперь напиши **содержание поста**:`,
         allowedMentions: { repliedUser: false }
       }).catch(() => null);
+
+      // Delete user message and bot reply after 1 second
+      setTimeout(() => {
+        message.delete().catch(() => null);
+        botReply?.delete().catch(() => null);
+      }, 1000);
       return;
     }
 
     // Second message = content
     if (messageInput.stage === 'content') {
       session.content = message.content;
+      // Save attachment if present (overwrite previous if needed)
+      if (message.attachments.size > 0) {
+        session.attachmentUrl = message.attachments.first().url;
+      }
       messageInput.stage = 'complete';
       
       await message.react('✅');
@@ -582,23 +597,25 @@ async function handlePostMessageInput(message) {
             )
         );
 
-      const photoButtons = new ActionRowBuilder()
+      const skipButton = new ActionRowBuilder()
         .addComponents(
           new ButtonBuilder()
-            .setCustomId(`post_add_image_${userId}`)
-            .setLabel('🖼️ Прикрепить фото')
-            .setStyle(ButtonStyle.Primary),
-          new ButtonBuilder()
             .setCustomId(`post_skip_image_${userId}`)
-            .setLabel('⏭️ Пропустить')
-            .setStyle(ButtonStyle.Secondary)
+            .setLabel('✅ Готово')
+            .setStyle(ButtonStyle.Success)
         );
 
-      await message.reply({
-        content: `✅ Содержание установлено!\n\n🎨 **Выбери цвет** и прикрепи фото (опционально):`,
-        components: [colorSelect, photoButtons],
+      const botReply = await message.reply({
+        content: `✅ Содержание установлено!\n\n🎨 **Выбери цвет:**`,
+        components: [colorSelect, skipButton],
         allowedMentions: { repliedUser: false }
       }).catch(() => null);
+
+      // Delete user message and bot reply after 1 second
+      setTimeout(() => {
+        message.delete().catch(() => null);
+        botReply?.delete().catch(() => null);
+      }, 1000);
       
       return;
     }
