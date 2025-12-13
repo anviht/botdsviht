@@ -54,46 +54,84 @@ function buildControlRow() {
 // Post the initial manager panel to the channel
 async function postPostManagerPanel(client) {
   try {
-    const ch = await client.channels.fetch(PANEL_CHANNEL_ID).catch(() => null);
+    console.log('[POST_MANAGER] Начало постинга панели...');
+    
+    const ch = await client.channels.fetch(PANEL_CHANNEL_ID).catch(err => {
+      console.error('[POST_MANAGER] Ошибка при получении канала:', err.message);
+      return null;
+    });
+    
     if (!ch) {
       console.warn('[POST_MANAGER] Канал не найден:', PANEL_CHANNEL_ID);
       return false;
     }
 
+    console.log('[POST_MANAGER] Канал получен:', PANEL_CHANNEL_ID);
+
     const embed = buildPostManagerEmbed();
     const row = buildControlRow();
 
-    await db.ensureReady();
-    const existing = await db.get('postManagerPanel').catch(() => null);
-
-    if (existing && existing.messageId) {
-      // Попытаемся обновить существующее сообщение
-      try {
-        const msg = await ch.messages.fetch(existing.messageId).catch(() => null);
-        if (msg) {
-          await msg.edit({ embeds: [embed], components: [row] });
-          console.log('[POST_MANAGER] Панель обновлена:', msg.id);
-          return true;
-        }
-      } catch (err) {
-        console.warn('[POST_MANAGER] Не удалось обновить сообщение, создаю новое:', err.message);
-      }
+    try {
+      await db.ensureReady();
+      console.log('[POST_MANAGER] БД готова');
+    } catch (dbErr) {
+      console.warn('[POST_MANAGER] Ошибка при подготовке БД:', dbErr.message);
     }
 
-    // Если нет существующего сообщения, создаём новое
+    let existing = null;
+    try {
+      existing = db.get('postManagerPanel');
+      console.log('[POST_MANAGER] Существующая запись:', existing);
+    } catch (err) {
+      console.warn('[POST_MANAGER] Ошибка при получении из БД:', err.message);
+    }
+
+    if (existing && existing.messageId) {
+      console.log('[POST_MANAGER] Попытка обновить существующее сообщение:', existing.messageId);
+      try {
+        const msg = await ch.messages.fetch(existing.messageId).catch(err => {
+          console.warn('[POST_MANAGER] Не удалось получить сообщение:', err.message);
+          return null;
+        });
+        
+        if (msg) {
+          await msg.edit({ embeds: [embed], components: [row] }).catch(err => {
+            console.error('[POST_MANAGER] Ошибка при редактировании:', err.message);
+          });
+          console.log('[POST_MANAGER] ✅ Панель обновлена:', msg.id);
+          return true;
+        } else {
+          console.log('[POST_MANAGER] Сообщение не найдено, создаю новое');
+        }
+      } catch (err) {
+        console.warn('[POST_MANAGER] Не удалось обновить, создаю новое:', err.message);
+      }
+    } else {
+      console.log('[POST_MANAGER] Нет существующего сообщения, создаю новое');
+    }
+
+    // Создаём новое сообщение
+    console.log('[POST_MANAGER] Отправляю новое сообщение в канал...');
     const msg = await ch.send({ embeds: [embed], components: [row] }).catch(e => {
-      console.error('[POST_MANAGER] Не удалось создать панель:', e.message);
+      console.error('[POST_MANAGER] ❌ Не удалось создать панель:', e.message);
       return null;
     });
 
     if (msg) {
-      console.log('[POST_MANAGER] Панель создана:', msg.id);
-      await db.set('postManagerPanel', { channelId: ch.id, messageId: msg.id });
+      console.log('[POST_MANAGER] ✅ Панель создана:', msg.id);
+      try {
+        await db.set('postManagerPanel', { channelId: ch.id, messageId: msg.id });
+        console.log('[POST_MANAGER] ✅ Запись сохранена в БД');
+      } catch (dbSetErr) {
+        console.warn('[POST_MANAGER] Ошибка при сохранении в БД:', dbSetErr.message);
+      }
       return true;
     }
+    
+    console.warn('[POST_MANAGER] ❌ Не удалось создать панель (msg is null)');
     return false;
   } catch (e) {
-    console.error('[POST_MANAGER] Ошибка postPostManagerPanel:', e.message);
+    console.error('[POST_MANAGER] ❌ Ошибка postPostManagerPanel:', e.message, e.stack);
     return false;
   }
 }
