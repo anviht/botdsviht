@@ -237,7 +237,9 @@ async function findYouTubeUrl(query) {
   
   // Extract title from URL if it's a YouTube link, otherwise use query as-is
   let searchQuery = query;
+  let isUrlQuery = false;
   if (/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)/.test(query)) {
+    isUrlQuery = true;
     // Extract video ID
     let vidId = null;
     const youtubeMatch = query.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
@@ -247,19 +249,11 @@ async function findYouTubeUrl(query) {
     if (vidId) {
       searchQuery = `youtube ${vidId}`;
     }
-  } else {
-    // For non-URL queries, try adding "music" or "song" hint if not already there
-    // This helps filter away news and other non-music content
-    const queryLower = query.toLowerCase();
-    if (!queryLower.includes('song') && !queryLower.includes('music') && !queryLower.includes('песня') && !queryLower.includes('трек')) {
-      // Try search with music hint first
-      searchQuery = `${query} song`;
-    }
   }
   
   try {
-    // Try direct search and collect candidates
-    let r = await yts(searchQuery);
+    // FIRST: Try exact search with original query to get most relevant results
+    let r = await yts(query);
     let vids = r && r.videos && r.videos.length ? r.videos.filter(v => !v.live && (v.seconds || 0) > 20) : [];
 
     // Blacklist and game-related terms we definitely want to exclude
@@ -270,6 +264,17 @@ async function findYouTubeUrl(query) {
     const newsChannels = ['новости', 'news', '24', 'москва 24', 'первый канал', 'первый', '1 канал', 'россия 1'];
     const queryLower = (query || '').toLowerCase();
     const prefersLong = blacklist.some(w => queryLower.includes(w));
+
+    // Helper to check if title matches query words well (for exact match prioritization)
+    function computeMatchQuality(title) {
+      const titleLower = title.toLowerCase();
+      const tokens = queryLower.split(/\s+/).filter(t => t.length > 2);
+      let matchedTokens = 0;
+      for (const t of tokens) {
+        if (titleLower.includes(t)) matchedTokens++;
+      }
+      return tokens.length > 0 ? matchedTokens / tokens.length : 0;
+    }
 
     // Helper to compute a relevance score for each video
     function scoreVideo(v) {
@@ -295,6 +300,10 @@ async function findYouTubeUrl(query) {
           if (title.includes(l)) score -= 50;
         }
       }
+
+      // BONUS for exact word match (how many words from query are in title)
+      const matchQuality = computeMatchQuality(title);
+      score += matchQuality * 200; // Heavy bonus for matching more query words
 
       // Strongly prefer official audio/music sources
       const musicIndicators = ['official audio', 'official music', 'audio', 'official video', 'music video', 'official', 'vevo', 'topic'];
@@ -364,8 +373,8 @@ async function findYouTubeUrl(query) {
 
     // If nothing good found, try targeted searches to prefer official audio/lyrics
     if (!vids.length) {
-      // Prioritize: official audio > official video > lyrics > audio > default
-      const variants = [`${searchQuery} official audio`, `${searchQuery} official music`, `${searchQuery} official`, `${searchQuery} lyrics`, `${searchQuery} audio`];
+      // Prioritize: official audio > official music > official > lyrics > audio
+      const variants = [`${query} official audio`, `${query} official music`, `${query} official`, `${query} lyrics`, `${query} audio`];
       for (const vq of variants) {
         try {
           const rr = await yts(vq);
@@ -382,6 +391,20 @@ async function findYouTubeUrl(query) {
       }
     }
 
+    // Try with " song" suffix if still nothing
+    if (!vids.length && !queryLower.includes('song') && !queryLower.includes('music') && !queryLower.includes('песня')) {
+      try {
+        const songVariant = `${query} song`;
+        r = await yts(songVariant);
+        vids = r && r.videos && r.videos.length ? r.videos.filter(v => !v.live && (v.seconds || 0) > 20) : [];
+        if (vids.length) {
+          const scored = vids.map(v => ({ v, score: scoreVideo(v) }));
+          scored.sort((a, b) => b.score - a.score || ((a.v.seconds || 0) - (b.v.seconds || 0)));
+          vids = scored.filter(s => s.score > -1000).map(s => s.v);
+        }
+      } catch (e) { /* ignore */ }
+    }
+
     // Try broader search fallback
     if (!vids.length) {
       r = await yts(query.split('?')[0].split('/').pop() || query);
@@ -391,7 +414,7 @@ async function findYouTubeUrl(query) {
     // If still nothing and play-dl is available, try play-dl search as a fallback
     if (!vids.length && playdl) {
       try {
-        const pls = await playdl.search(searchQuery, { limit: 6 }).catch(() => null);
+        const pls = await playdl.search(query, { limit: 6 }).catch(() => null);
         if (pls && Array.isArray(pls) && pls.length) {
           vids = pls.map(p => ({ url: p.url || (p.id ? `https://www.youtube.com/watch?v=${p.id}` : null), title: p.title || p.name }));
         }
