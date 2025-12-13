@@ -232,27 +232,21 @@ async function handleTitleModal(interaction) {
     session.title = interaction.fields.getTextInputValue('post_title');
     console.log('[POST_MANAGER] Заголовок установлен:', session.title);
 
-    // ModalSubmitInteraction НЕ поддерживает showModal()
-    // Создаём новую модаль для содержания
-    const modal = new ModalBuilder()
-      .setCustomId(`post_content_modal_${userId}`)
-      .setTitle('📄 Текст поста')
-      .addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('post_content')
-            .setLabel('Описание/Текст')
-            .setStyle(TextInputStyle.Paragraph)
-            .setPlaceholder('напиши содержание поста...')
-            .setMaxLength(4000)
-            .setRequired(true)
-        )
-      );
+    // После ModalSubmitInteraction НЕ поддерживается showModal()
+    // Вместо этого используем reply() с кнопкой для открытия новой модали через button
+    const contentButton = new ButtonBuilder()
+      .setCustomId(`post_ask_content_${userId}`)
+      .setLabel('📝 Ввести текст поста')
+      .setStyle(ButtonStyle.Primary);
 
-    // showModal() вызывается напрямую на ModalSubmitInteraction - это корректное использование API
-    // Discord SDK поддерживает этот паттерн для цепочки модалей
-    await interaction.showModal(modal);
-    console.log('[POST_MANAGER] Модаль содержания показана');
+    const row = new ActionRowBuilder().addComponents(contentButton);
+
+    await interaction.reply({
+      content: `✅ Заголовок **"${session.title}"** принят!\n\nНажми кнопку ниже, чтобы ввести текст поста:`,
+      components: [row],
+      ephemeral: true
+    });
+    console.log('[POST_MANAGER] Отправлена кнопка для ввода содержания');
   } catch (e) {
     console.error('[POST_MANAGER] Ошибка handleTitleModal:', e.message);
     try {
@@ -491,6 +485,44 @@ async function handlePostPublish(interaction) {
 }
 
 // Handle button interactions
+// Handle button to show content input modal
+async function handleAskContent(interaction) {
+  try {
+    const userId = interaction.user.id;
+    const session = postSessions.get(userId);
+
+    if (!session) {
+      return await interaction.reply({ content: '❌ Сессия потеряна', ephemeral: true }).catch(() => null);
+    }
+
+    console.log('[POST_MANAGER] Показываем модаль содержания');
+
+    const modal = new ModalBuilder()
+      .setCustomId(`post_content_modal_${userId}`)
+      .setTitle('📄 Текст поста')
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('post_content')
+            .setLabel('Описание/Текст')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('напиши содержание поста...')
+            .setMaxLength(4000)
+            .setRequired(true)
+        )
+      );
+
+    await interaction.showModal(modal);
+  } catch (e) {
+    console.error('[POST_MANAGER] Ошибка handleAskContent:', e.message);
+    try {
+      await interaction.reply({ content: '❌ Ошибка: ' + e.message, ephemeral: true });
+    } catch (replyErr) {
+      console.error('[POST_MANAGER] Не удалось отправить ошибку:', replyErr.message);
+    }
+  }
+}
+
 async function handlePostManagerButton(interaction) {
   const customId = interaction.customId;
 
@@ -504,6 +536,8 @@ async function handlePostManagerButton(interaction) {
     await handleAddImage(interaction);
   } else if (customId.startsWith('post_skip_image_')) {
     await handleSkipImage(interaction);
+  } else if (customId.startsWith('post_ask_content_')) {
+    await handleAskContent(interaction);
   }
 }
 
