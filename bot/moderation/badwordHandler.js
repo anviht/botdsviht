@@ -28,14 +28,16 @@ const ENGLISH_TO_RUSSIAN = {
 };
 
 /**
- * Нормализирует текст удаляя спецсимволы/пробелы
+ * Нормализирует текст удаляя спецсимволы (но НЕ пробелы, они нужны для разделения слов)
  */
 function cleanText(text) {
   return text
     .toLowerCase()
     .replace(/0/g, 'о').replace(/1/g, 'и').replace(/3/g, 'з').replace(/4/g, 'а')
     .replace(/5/g, 'с').replace(/7/g, 'т').replace(/8/g, 'в').replace(/9/g, 'б')
-    .replace(/[._\-*~^&@!№%$#\"'()[\]{}<>|\\:/?,;+=`~\s]/g, '');
+    .replace(/[._\-*~^&@!№%$#\"'()[\]{}<>|\\:/?,;+=`~]/g, '')  // НЕ удаляем \s (пробелы)
+    .replace(/\s+/g, ' ')  // Объединяем множественные пробелы в один
+    .trim(); // Удаляем начальные и конечные пробелы
 }
 
 /**
@@ -386,19 +388,42 @@ async function checkMessage(message, client) {
     if (!message.content || message.content.length === 0) return;
 
     const content = message.content;
-    const contentVariants = normalizeText(content);
+    const contentWords = content.toLowerCase().split(/\s+/); // Разделяем на слова
+    const foundBadwords = [];
     
     // Проверяем каждое матерное слово
-    let foundBadwords = [];
-    
     for (const badword of badwordsList.badwords) {
       const badwordVariants = normalizeText(badword);
       
-      // Проверяем есть ли слово в любом из вариантов
-      const cleanedBadword = cleanText(badword);
-      if (contentVariants.some(v => v.includes(cleanedBadword)) || 
-          badwordVariants.some(bv => contentVariants.some(cv => cv.includes(bv)))) {
-        foundBadwords.push(badword);
+      // Проверяем каждое слово в сообщении
+      for (const word of contentWords) {
+        const wordVariants = normalizeText(word);
+        
+        // DEBUG для интересующих слов
+        if (badword === 'ебало' || badword === 'хуйню' || badword === 'хуйня') {
+          console.log(`[BADWORD DEBUG] Checking word "${word}" against badword "${badword}"`);
+          console.log(`[BADWORD DEBUG] Word variants:`, wordVariants);
+          console.log(`[BADWORD DEBUG] Badword variants:`, badwordVariants);
+        }
+        
+        // Проверяем совпадение
+        const cleanedBadword = cleanText(badword);
+        const cleanedWord = cleanText(word);
+        
+        // Проверяем прямое совпадение или содержание (для подслов)
+        const matches = 
+          cleanedWord === cleanedBadword ||
+          wordVariants.some(wv => badwordVariants.some(bv => wv === bv || wv.includes(bv) || bv.includes(wv)));
+        
+        if (matches) {
+          if (!foundBadwords.includes(badword)) {
+            foundBadwords.push(badword);
+            if (badword === 'ебало' || badword === 'хуйню' || badword === 'хуйня') {
+              console.log(`[BADWORD DEBUG] ✓ MATCHED: "${badword}"`);
+            }
+          }
+          break; // Нашли это слово, переходим к следующему матерному слову
+        }
       }
     }
 
