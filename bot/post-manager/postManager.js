@@ -84,6 +84,24 @@ async function handleChannelSelect(interaction) {
 
     session.channel = interaction.values[0];
 
+    const button = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`pm_title_btn_${userId}`).setLabel('📝 Вперёд').setStyle(ButtonStyle.Primary)
+    );
+
+    await interaction.reply({ 
+      content: `✅ Канал <#${session.channel}> выбран!\n\n👇 Нажми кнопку чтобы заполнить заголовок`, 
+      components: [button],
+      ephemeral: true 
+    }).catch(() => null);
+  } catch (e) { console.error('[PM] Channel:', e.message); }
+}
+
+async function handleTitleButton(interaction) {
+  try {
+    const userId = interaction.user.id;
+    const session = postSessions.get(userId);
+    if (!session) return;
+
     const modal = new ModalBuilder()
       .setCustomId(`pm_title_${userId}`)
       .setTitle('📝 Заголовок')
@@ -94,7 +112,7 @@ async function handleChannelSelect(interaction) {
       );
 
     await interaction.showModal(modal);
-  } catch (e) { console.error('[PM] Channel:', e.message); }
+  } catch (e) { console.error('[PM] TitleBtn:', e.message); }
 }
 
 async function handleTitleModal(interaction) {
@@ -296,6 +314,7 @@ async function handlePostManagerButton(interaction) {
   if (customId === 'post_new') await handlePostNew(interaction);
   else if (customId === 'post_preview') await handlePreview(interaction);
   else if (customId === 'post_send') await handleSend(interaction);
+  else if (customId.startsWith('pm_title_btn_')) await handleTitleButton(interaction);
   else if (customId.startsWith('pm_color_') && !customId.includes('menu')) await handleColorSelect(interaction);
   else if (customId.startsWith('pm_image_')) await handleImageButton(interaction);
   else if (customId.startsWith('pm_preview_')) await handlePreview(interaction);
