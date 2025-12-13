@@ -247,6 +247,14 @@ async function findYouTubeUrl(query) {
     if (vidId) {
       searchQuery = `youtube ${vidId}`;
     }
+  } else {
+    // For non-URL queries, try adding "music" or "song" hint if not already there
+    // This helps filter away news and other non-music content
+    const queryLower = query.toLowerCase();
+    if (!queryLower.includes('song') && !queryLower.includes('music') && !queryLower.includes('песня') && !queryLower.includes('трек')) {
+      // Try search with music hint first
+      searchQuery = `${query} song`;
+    }
   }
   
   try {
@@ -257,7 +265,9 @@ async function findYouTubeUrl(query) {
     // Blacklist and game-related terms we definitely want to exclude
     const blacklist = ['full album', 'full song', 'full mix', 'album', 'movie', 'episode', 'podcast', 'interview', 'documentary', 'soundtrack', 'mashup', 'compilation'];
     const gamingBlacklist = ['gameplay', 'minecraft', "let's play", 'walkthrough', 'gameplay', 'скриншот', 'стрим', 'влог', 'геймплей', 'обзор'];
+    const newsBlacklist = ['новости', 'news', 'финансы', 'finance', 'цена', 'price', 'рекорд', 'record', 'максимум', 'maximum', 'покупать', 'buy', 'акции', 'stocks', 'криптовалюта', 'crypto', 'биржа', 'exchange'];
     const liveBlacklist = ['live', 'live concert', 'live performance', 'живой концерт', 'live session', 'концерт', 'performance', 'with lyrics', 'lyric video'];
+    const newsChannels = ['новости', 'news', '24', 'москва 24', 'первый канал', 'первый', '1 канал', 'россия 1'];
     const queryLower = (query || '').toLowerCase();
     const prefersLong = blacklist.some(w => queryLower.includes(w));
 
@@ -267,6 +277,14 @@ async function findYouTubeUrl(query) {
       const author = ((v.author && v.author.name) || (v.owner && v.owner.name) || '').toLowerCase();
       const seconds = v.seconds || 0;
       let score = 0;
+
+      // HARD REJECT news/finance videos
+      for (const nc of newsChannels) {
+        if (author.includes(nc)) return -9999;
+      }
+      for (const n of newsBlacklist) {
+        if (title.includes(n) && !queryLower.includes('песня') && !queryLower.includes('song')) return -9999;
+      }
 
       // Penalize obvious non-music/gaming videos
       for (const g of gamingBlacklist) if (title.includes(g) || author.includes(g)) return -9999;
