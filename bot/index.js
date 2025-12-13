@@ -761,9 +761,17 @@ client.on('interactionCreate', async (interaction) => {
       }
       // Post Manager modals
       if (interaction.customId && interaction.customId.startsWith('post_') && interaction.customId.includes('modal')) {
-        try { 
+        try {
+          console.log('[POST_MANAGER] Обработка модали:', interaction.customId);
           await handlePostManagerModal(interaction);
-        } catch (err) { console.error('Post manager modal error', err); await safeReply(interaction, { content: 'Ошибка при обработке формы.', ephemeral: true }); }
+        } catch (err) { 
+          console.error('[POST_MANAGER] Ошибка модали:', err.message, err.stack); 
+          try {
+            await interaction.reply({ content: '❌ Ошибка формы: ' + err.message, ephemeral: true });
+          } catch (replyErr) {
+            console.error('[POST_MANAGER] Не удалось отправить ошибку пользователю:', replyErr.message);
+          }
+        }
         return;
       }
     }

@@ -225,32 +225,34 @@ async function handleTitleModal(interaction) {
       return await interaction.reply({ content: '❌ Сессия потеряна', ephemeral: true }).catch(() => null);
     }
 
+    if (!interaction.isModalSubmit()) {
+      return await interaction.reply({ content: '❌ Неподдерживаемый тип интеракции', ephemeral: true });
+    }
+
     session.title = interaction.fields.getTextInputValue('post_title');
     console.log('[POST_MANAGER] Заголовок установлен:', session.title);
 
-    // Проверяем тип интеракции - если это ModalSubmitInteraction, используем reply
-    // так как showModal() не работает с ModalSubmitInteraction
-    if (interaction.isModalSubmit()) {
-      // Show content input modal через новую интеракцию
-      const modal = new ModalBuilder()
-        .setCustomId(`post_content_modal_${userId}`)
-        .setTitle('📄 Текст поста')
-        .addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('post_content')
-              .setLabel('Описание/Текст')
-              .setStyle(TextInputStyle.Paragraph)
-              .setPlaceholder('напиши содержание поста...')
-              .setMaxLength(4000)
-              .setRequired(true)
-          )
-        );
+    // ModalSubmitInteraction НЕ поддерживает showModal()
+    // Создаём новую модаль для содержания
+    const modal = new ModalBuilder()
+      .setCustomId(`post_content_modal_${userId}`)
+      .setTitle('📄 Текст поста')
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('post_content')
+            .setLabel('Описание/Текст')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('напиши содержание поста...')
+            .setMaxLength(4000)
+            .setRequired(true)
+        )
+      );
 
-      await interaction.showModal(modal);
-    } else {
-      await interaction.reply({ content: '❌ Неподдерживаемый тип интеракции', ephemeral: true });
-    }
+    // showModal() вызывается напрямую на ModalSubmitInteraction - это корректное использование API
+    // Discord SDK поддерживает этот паттерн для цепочки модалей
+    await interaction.showModal(modal);
+    console.log('[POST_MANAGER] Модаль содержания показана');
   } catch (e) {
     console.error('[POST_MANAGER] Ошибка handleTitleModal:', e.message);
     try {
