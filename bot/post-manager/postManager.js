@@ -30,18 +30,27 @@ async function processEmojiInText(text, client, guildId) {
   
   try {
     const guild = await client.guilds.fetch(guildId).catch(() => null);
-    if (!guild) return text;
+    if (!guild) {
+      console.warn('[POST_MANAGER] Guild not found');
+      return text;
+    }
     
     const emojis = await guild.emojis.fetch().catch(() => null);
-    if (!emojis) return text;
+    if (!emojis || emojis.size === 0) {
+      console.warn('[POST_MANAGER] No emojis found in guild');
+      return text;
+    }
     
     let processed = text;
     
     // Ищем все :name: паттерны
     const emojiPattern = /:(\w+):/g;
-    let match;
+    const matches = [...text.matchAll(emojiPattern)];
     
-    while ((match = emojiPattern.exec(text)) !== null) {
+    console.log(`[POST_MANAGER] Found ${matches.length} potential emojis in text`);
+    
+    // Обрабатываем каждый найденный эмодзи
+    for (const match of matches) {
       const emojiName = match[1];
       const emojiObj = emojis.find(e => e.name === emojiName);
       
@@ -49,9 +58,13 @@ async function processEmojiInText(text, client, guildId) {
         // Заменяем :name: на <:name:id> или <a:name:id> для анимированных
         const emojiFormat = emojiObj.animated ? `<a:${emojiName}:${emojiObj.id}>` : `<:${emojiName}:${emojiObj.id}>`;
         processed = processed.replace(`:${emojiName}:`, emojiFormat);
+        console.log(`[POST_MANAGER] Converted :${emojiName}: to ${emojiFormat}`);
+      } else {
+        console.warn(`[POST_MANAGER] Emoji :${emojiName}: not found in guild`);
       }
     }
     
+    console.log(`[POST_MANAGER] Final processed text: ${processed.substring(0, 100)}`);
     return processed;
   } catch (e) {
     console.error('[POST_MANAGER] Error processing emoji:', e.message);
