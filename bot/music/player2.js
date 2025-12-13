@@ -255,8 +255,9 @@ async function findYouTubeUrl(query) {
     let vids = r && r.videos && r.videos.length ? r.videos.filter(v => !v.live && (v.seconds || 0) > 20) : [];
 
     // Blacklist and game-related terms we definitely want to exclude
-    const blacklist = ['full album', 'full song', 'full mix', 'album', 'movie', 'episode', 'podcast', 'interview', 'documentary', 'soundtrack', 'mashup'];
-    const gamingBlacklist = ['gameplay', 'minecraft', "let's play", 'walkthrough', 'gameplay', 'скриншот', 'стрим', 'влог', 'геймплей'];
+    const blacklist = ['full album', 'full song', 'full mix', 'album', 'movie', 'episode', 'podcast', 'interview', 'documentary', 'soundtrack', 'mashup', 'compilation'];
+    const gamingBlacklist = ['gameplay', 'minecraft', "let's play", 'walkthrough', 'gameplay', 'скриншот', 'стрим', 'влог', 'геймплей', 'обзор'];
+    const liveBlacklist = ['live', 'live concert', 'live performance', 'живой концерт', 'live session', 'концерт', 'performance', 'with lyrics', 'lyric video'];
     const queryLower = (query || '').toLowerCase();
     const prefersLong = blacklist.some(w => queryLower.includes(w));
 
@@ -269,11 +270,33 @@ async function findYouTubeUrl(query) {
 
       // Penalize obvious non-music/gaming videos
       for (const g of gamingBlacklist) if (title.includes(g) || author.includes(g)) return -9999;
+      
+      // Penalize live performances and streams (unless specifically requested)
+      if (!queryLower.includes('live') && !queryLower.includes('concert')) {
+        for (const l of liveBlacklist) {
+          if (title.includes(l)) score -= 50;
+        }
+      }
 
-      // Prefer official channels and Topic/VEVO/uploader cues
-      const officialIndicators = ['vevo', 'official', 'topic', 'audio', 'lyrics'];
-      for (const oi of officialIndicators) {
-        if (author.includes(oi) || title.includes(oi)) score += 30;
+      // Strongly prefer official audio/music sources
+      const musicIndicators = ['official audio', 'official music', 'audio', 'official video', 'music video', 'official', 'vevo', 'topic'];
+      let hasMusic = false;
+      for (const mi of musicIndicators) {
+        if (author.includes(mi) || title.includes(mi)) {
+          hasMusic = true;
+          if (mi === 'official audio' || mi === 'official music') score += 100;
+          else if (mi === 'audio' || mi === 'vevo' || mi === 'topic') score += 50;
+          else score += 20;
+        }
+      }
+      
+      // If query looks like song name (has "artist - song" or similar), require it's not a cover/remix/parody
+      const isSongQuery = /\s*-\s*/.test(queryLower) || queryLower.split(' ').length <= 5;
+      if (isSongQuery) {
+        const avoidKeywords = ['cover', 'remix', 'edit', 'parody', 'tribute', 'reaction', 'tutorial', 'lesson', 'how to'];
+        for (const ak of avoidKeywords) {
+          if (title.includes(ak) && !author.includes(ak)) score -= 40;
+        }
       }
 
       // Word match scoring - require tokens from query
@@ -285,13 +308,12 @@ async function findYouTubeUrl(query) {
       }
       score += matches * 20;
 
-      // Favor typical song durations (30s..10min) and penalize extremes
-      if (seconds >= 30 && seconds <= 600) score += 20;
-      if (seconds < 30) score -= 50;
-      if (seconds > 1200) score -= 40;
-
-      // Favor shorter (song-like) durations slightly
-      score -= Math.max(0, (seconds - 240) / 30);
+      // Strongly favor typical song durations (2-8 minutes for most songs, 1-15 min for extended)
+      if (seconds >= 120 && seconds <= 480) score += 50; // 2-8 min - ideal for normal songs
+      if (seconds >= 30 && seconds <= 120) score += 30;  // 30 sec - 2 min (short versions, intros)
+      if (seconds >= 480 && seconds <= 900) score += 20; // 8-15 min (extended/remixes)
+      if (seconds < 30) score -= 100;                     // Too short
+      if (seconds > 1200) score -= 80;                    // Way too long (likely not a song)
 
       return score;
     }
@@ -299,8 +321,19 @@ async function findYouTubeUrl(query) {
     // Filter out blacklist terms and gameplay; then score and sort
     vids = vids.filter(v => {
       const t = (v.title || '').toLowerCase();
-      if (!prefersLong && (v.seconds || 0) > 1200) return false;
+      const a = ((v.author && v.author.name) || (v.owner && v.owner.name) || '').toLowerCase();
+      const seconds = v.seconds || 0;
+      
+      // Reject extremely short or long videos
+      if (seconds < 30) return false;
+      if (!prefersLong && seconds > 1200) return false; // reject > 20 min unless asking for album/compilation
+      
+      // Reject gaming content
+      if (t.includes('gameplay') || t.includes('minecraft') || a.includes('геймплей')) return false;
+      
+      // Reject blacklist terms
       for (const b of blacklist) if (!prefersLong && t.includes(b)) return false;
+      
       return true;
     });
 
@@ -313,7 +346,8 @@ async function findYouTubeUrl(query) {
 
     // If nothing good found, try targeted searches to prefer official audio/lyrics
     if (!vids.length) {
-      const variants = [`${searchQuery} official audio`, `${searchQuery} official video`, `${searchQuery} lyrics`, `${searchQuery} audio`];
+      // Prioritize: official audio > official video > lyrics > audio > default
+      const variants = [`${searchQuery} official audio`, `${searchQuery} official music`, `${searchQuery} official`, `${searchQuery} lyrics`, `${searchQuery} audio`];
       for (const vq of variants) {
         try {
           const rr = await yts(vq);
@@ -324,7 +358,7 @@ async function findYouTubeUrl(query) {
             scored.sort((a, b) => b.score - a.score || ((a.v.seconds || 0) - (b.v.seconds || 0)));
             const chosen = scored.find(s => s.score > -1000);
             if (chosen) { vids = [chosen.v]; break; }
-            vids = found;
+            vids = found.slice(0, 5); // Take top 5 if good ones found
           }
         } catch (e) { /* ignore */ }
       }
