@@ -118,9 +118,23 @@ async function handleTitleModal(interaction) {
   try {
     const userId = interaction.user.id;
     const session = postSessions.get(userId);
-    if (!session) return await interaction.reply({ content: '❌ Сессия потеряна', ephemeral: true }).catch(() => null);
+    if (!session) return;
 
     session.title = interaction.fields.getTextInputValue('title');
+
+    const btn = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`pm_content_btn_${userId}`).setLabel('📄 Далее').setStyle(ButtonStyle.Primary)
+    );
+
+    await interaction.reply({ content: `✅ Заголовок: **"${session.title}"**\n\n👇 Нажми кнопку для содержания`, components: [btn], ephemeral: true }).catch(() => null);
+  } catch (e) { console.error('[PM] TitleModal:', e.message); }
+}
+
+async function handleContentButton(interaction) {
+  try {
+    const userId = interaction.user.id;
+    const session = postSessions.get(userId);
+    if (!session) return;
 
     const modal = new ModalBuilder()
       .setCustomId(`pm_content_${userId}`)
@@ -132,7 +146,7 @@ async function handleTitleModal(interaction) {
       );
 
     await interaction.showModal(modal);
-  } catch (e) { console.error('[PM] Title:', e.message); }
+  } catch (e) { console.error('[PM] ContentBtn:', e.message); }
 }
 
 async function handleContentModal(interaction) {
@@ -314,6 +328,7 @@ async function handlePostManagerButton(interaction) {
   else if (customId === 'post_preview') await handlePreview(interaction);
   else if (customId === 'post_send') await handleSend(interaction);
   else if (customId.startsWith('pm_title_btn_')) await handleTitleButton(interaction);
+  else if (customId.startsWith('pm_content_btn_')) await handleContentButton(interaction);
   else if (customId.startsWith('pm_color_') && !customId.includes('menu')) await handleColorSelect(interaction);
   else if (customId.startsWith('pm_image_')) await handleImageButton(interaction);
   else if (customId.startsWith('pm_preview_')) await handlePreview(interaction);
