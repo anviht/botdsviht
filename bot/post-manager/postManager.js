@@ -2,9 +2,12 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder
 const db = require('../libs/db');
 
 const PANEL_CHANNEL_ID = '1448413112423288903';
+const BOT_ID = '1441754848658981016';
 
 // In-memory session state for post creation
 const postSessions = new Map();
+// Track which users are in message input mode
+const messageInputSessions = new Map();
 
 // Color presets for embeds
 const COLOR_PRESETS = {
@@ -147,7 +150,8 @@ async function handlePostCreate(interaction) {
       content: '',
       color: 0x5865F2,
       targetChannelId: null,
-      attachmentUrl: null
+      attachmentUrl: null,
+      stage: 'awaiting_title' // Track which input we're waiting for
     });
 
     // Show channel selection
@@ -181,30 +185,20 @@ async function handleChannelSelect(interaction) {
 
     const selectedChannelId = interaction.values[0];
     session.targetChannelId = selectedChannelId;
+    session.stage = 'awaiting_title';
     console.log('[POST_MANAGER] Selected channel:', selectedChannelId);
 
-    // Show title input modal
-    const modal = new ModalBuilder()
-      .setCustomId(`post_title_modal_${userId}`)
-      .setTitle('📝 Заголовок поста')
-      .addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('post_title')
-            .setLabel('Заголовок')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('например: Важное объявление')
-            .setMaxLength(256)
-            .setRequired(true)
-        )
-      );
+    // Mark that this user is now entering message input mode
+    messageInputSessions.set(userId, {
+      stage: 'title',
+      channelId: PANEL_CHANNEL_ID,
+      startTime: Date.now()
+    });
 
-    // For SelectMenuInteraction, we must use showModal without deferring
-    if (interaction.isStringSelectMenu() || interaction.isChannelSelectMenu()) {
-      await interaction.showModal(modal);
-    } else {
-      await interaction.reply({ content: '❌ Неподдерживаемый тип интеракции', ephemeral: true });
-    }
+    await interaction.reply({
+      content: `✅ Канал выбран: <#${selectedChannelId}>\n\n📝 **Теперь напиши в этот канал:**\n1️⃣ **Сначала** - заголовок поста\n2️⃣ **Затем** - содержание поста\n\n*Сообщения будут автоматически обработаны*`,
+      ephemeral: true
+    });
   } catch (e) {
     console.error('[POST_MANAGER] handleChannelSelect error:', e.message, e.stack);
     try {
@@ -215,49 +209,16 @@ async function handleChannelSelect(interaction) {
   }
 }
 
-// Handle title input modal
+// Handle title input modal (deprecated - now using message input)
 async function handleTitleModal(interaction) {
   try {
-    const userId = interaction.user.id;
-    const session = postSessions.get(userId);
-
-    if (!session) {
-      return await interaction.reply({ content: '❌ Сессия потеряна', ephemeral: true }).catch(() => null);
-    }
-
-    if (!interaction.isModalSubmit()) {
-      return await interaction.reply({ content: '❌ Неподдерживаемый тип интеракции', ephemeral: true });
-    }
-
-    session.title = interaction.fields.getTextInputValue('post_title');
-    console.log('[POST_MANAGER] Заголовок установлен:', session.title);
-
-    // После ModalSubmitInteraction НЕ поддерживается showModal()
-    // Вместо этого используем reply() с кнопкой для открытия новой модали через button
-    const contentButton = new ButtonBuilder()
-      .setCustomId(`post_ask_content_${userId}`)
-      .setLabel('📝 Ввести текст поста')
-      .setStyle(ButtonStyle.Primary);
-
-    const row = new ActionRowBuilder().addComponents(contentButton);
-
-    await interaction.reply({
-      content: `✅ Заголовок **"${session.title}"** принят!\n\nНажми кнопку ниже, чтобы ввести текст поста:`,
-      components: [row],
-      ephemeral: true
-    });
-    console.log('[POST_MANAGER] Отправлена кнопка для ввода содержания');
+    await interaction.reply({ content: '❌ Эта функция больше не используется. Используй обычное сообщение в чате.', ephemeral: true }).catch(() => null);
   } catch (e) {
     console.error('[POST_MANAGER] Ошибка handleTitleModal:', e.message);
-    try {
-      await interaction.reply({ content: '❌ Ошибка: ' + e.message, ephemeral: true });
-    } catch (replyErr) {
-      console.error('[POST_MANAGER] Не удалось отправить ошибку:', replyErr.message);
-    }
   }
 }
 
-// Handle content input modal
+// Handle content input modal (deprecated - now using message input)
 async function handleContentModal(interaction) {
   try {
     const userId = interaction.user.id;
@@ -421,7 +382,7 @@ function buildPostPreview(session) {
     minute: '2-digit',
     second: '2-digit'
   });
-  embed.setFooter({ text: `Опубликовал <@&1436485697392607303> • ${timeStr}` });
+  embed.setFooter({ text: `Опубликовал <@${BOT_ID}> • ${timeStr}` });
   return embed;
 }
 
@@ -565,9 +526,93 @@ async function handlePostManagerModal(interaction) {
   }
 }
 
+// Handle message input for post creation
+async function handlePostMessageInput(message) {
+  try {
+    if (message.author.bot) return;
+    if (message.channelId !== PANEL_CHANNEL_ID) return;
+
+    const userId = message.author.id;
+    const messageInput = messageInputSessions.get(userId);
+    const session = postSessions.get(userId);
+
+    if (!messageInput || !session) return; // User not in message input mode
+
+    const now = Date.now();
+    if (now - messageInput.startTime > 5 * 60 * 1000) {
+      // Session expired after 5 minutes
+      messageInputSessions.delete(userId);
+      return;
+    }
+
+    // First message = title
+    if (messageInput.stage === 'title') {
+      session.title = message.content;
+      messageInput.stage = 'content';
+      
+      await message.react('✅');
+      await message.reply({
+        content: `✅ Заголовок: **"${session.title}"**\n\n📝 Теперь напиши **содержание поста**:`,
+        allowedMentions: { repliedUser: false }
+      }).catch(() => null);
+      return;
+    }
+
+    // Second message = content
+    if (messageInput.stage === 'content') {
+      session.content = message.content;
+      messageInput.stage = 'complete';
+      
+      await message.react('✅');
+      
+      // Now show color and image selection
+      const colorSelect = new ActionRowBuilder()
+        .addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`post_color_select_${userId}`)
+            .setPlaceholder('🎨 Выбери цвет квадратика')
+            .addOptions(
+              { label: '🔴 Красный', value: 'red', emoji: '🔴' },
+              { label: '🟢 Зелёный', value: 'green', emoji: '🟢' },
+              { label: '🔵 Синий', value: 'blue', emoji: '🔵' },
+              { label: '🟡 Жёлтый', value: 'yellow', emoji: '🟡' },
+              { label: '🟣 Фиолетовый', value: 'purple', emoji: '🟣' },
+              { label: '🔷 Голубой', value: 'cyan', emoji: '🔷' },
+              { label: '🟠 Оранжевый', value: 'orange', emoji: '🟠' }
+            )
+        );
+
+      const photoButtons = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId(`post_add_image_${userId}`)
+            .setLabel('🖼️ Прикрепить фото')
+            .setStyle(ButtonStyle.Primary),
+          new ButtonBuilder()
+            .setCustomId(`post_skip_image_${userId}`)
+            .setLabel('⏭️ Пропустить')
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+      await message.reply({
+        content: `✅ Содержание установлено!\n\n🎨 **Выбери цвет** и прикрепи фото (опционально):`,
+        components: [colorSelect, photoButtons],
+        allowedMentions: { repliedUser: false }
+      }).catch(() => null);
+      
+      return;
+    }
+  } catch (e) {
+    console.error('[POST_MANAGER] handlePostMessageInput error:', e.message);
+  }
+}
+
 module.exports = {
   postPostManagerPanel,
   handlePostManagerButton,
   handlePostManagerSelect,
-  handlePostManagerModal
+  handlePostManagerModal,
+  handlePostMessageInput,
+  postSessions,
+  messageInputSessions
 };

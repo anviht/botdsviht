@@ -1009,6 +1009,14 @@ client.on('messageCreate', async (message) => {
     if (message.author?.bot) return;
     if (!message.channel) return;
     
+    // Post Manager message input
+    try {
+      const { handlePostMessageInput } = require('./post-manager/postManager');
+      await handlePostMessageInput(message);
+    } catch (e) {
+      console.warn('Post Manager message input error:', e && e.message ? e.message : e);
+    }
+    
     // Проверка на матерные слова - работает на всех каналах
     try {
       const { checkMessage } = require('./moderation/badwordHandler');
