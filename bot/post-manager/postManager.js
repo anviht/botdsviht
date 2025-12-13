@@ -294,12 +294,24 @@ async function handleColorSelect(interaction) {
     const colorKey = interaction.values[0];
     session.color = COLOR_PRESETS[colorKey] || 0x5865F2;
 
-    // Set stage to waiting for image
-    if (messageInput) {
-      messageInput.stage = 'waiting_image';
-    }
+    // Show buttons for photo or publish
+    const photoButton = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`post_add_image_${userId}`)
+          .setLabel('🖼️ Прикрепить фото')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`post_skip_image_${userId}`)
+          .setLabel('✅ Готово')
+          .setStyle(ButtonStyle.Success)
+      );
 
-    await interaction.reply({ content: `✅ Цвет установлен на **${colorKey}**\n\n🖼️ Можешь отправить фото (опционально) или нажми **"Опубликовать"** чтобы создать пост`, ephemeral: true }).catch(() => null);
+    await interaction.reply({ 
+      content: `✅ Цвет установлен на **${colorKey}**\n\n🖼️ **Прикрепить фото к посту?**`, 
+      components: [photoButton],
+      ephemeral: true 
+    }).catch(() => null);
   } catch (e) {
     console.error('[POST_MANAGER] handleColorSelect error:', e.message);
   }
@@ -310,32 +322,27 @@ async function handleAddImage(interaction) {
   try {
     const userId = interaction.user.id;
     const session = postSessions.get(userId);
+    const messageInput = messageInputSessions.get(userId);
 
     if (!session) {
       return await interaction.reply({ content: '❌ Сессия потеряна', ephemeral: true }).catch(() => null);
     }
 
-    const modal = new ModalBuilder()
-      .setCustomId(`post_image_modal_${userId}`)
-      .setTitle('🖼️ Прикрепить фото')
-      .addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('image_url')
-            .setLabel('URL фото или ссылка')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('https://example.com/image.png')
-            .setRequired(true)
-        )
-      );
+    // Set stage to waiting for image message input
+    if (messageInput) {
+      messageInput.stage = 'waiting_image';
+    }
 
-    await interaction.showModal(modal).catch(() => null);
+    await interaction.reply({ 
+      content: `📤 **Отправь фото в этот канал!**\n\nПосле того как ты отправишь фото, появятся кнопки "Просмотр" и "Опубликовать"`,
+      ephemeral: true 
+    }).catch(() => null);
   } catch (e) {
     console.error('[POST_MANAGER] handleAddImage error:', e.message);
   }
 }
 
-// Handle image URL modal
+// Handle image URL modal (deprecated - now using message input)
 async function handleImageModal(interaction) {
   try {
     const userId = interaction.user.id;
@@ -362,8 +369,25 @@ async function handleSkipImage(interaction) {
       return await interaction.reply({ content: '❌ Сессия потеряна', ephemeral: true }).catch(() => null);
     }
 
+    // Show preview and publish buttons
+    const controlRow = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId('post_preview')
+          .setLabel('👁️ Просмотр')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId('post_publish')
+          .setLabel('📤 Опубликовать')
+          .setStyle(ButtonStyle.Danger)
+      );
+
     session.attachmentUrl = null;
-    await interaction.reply({ content: '⏭️ Фото пропущено', ephemeral: true }).catch(() => null);
+    await interaction.reply({ 
+      content: `✅ Готово к публикации!`, 
+      components: [controlRow],
+      ephemeral: true 
+    }).catch(() => null);
   } catch (e) {
     console.error('[POST_MANAGER] handleSkipImage error:', e.message);
   }
@@ -597,16 +621,15 @@ async function handlePostMessageInput(message) {
             )
         );
 
-      const botReply = await message.reply({
+      await message.reply({
         content: `✅ Содержание установлено!\n\n🎨 **Выбери цвет:**`,
         components: [colorSelect],
         allowedMentions: { repliedUser: false }
       }).catch(() => null);
 
-      // Delete user message and bot reply after 1 second
+      // Delete user message after 1 second (not bot reply - it stays for color selection)
       setTimeout(() => {
         message.delete().catch(() => null);
-        botReply?.delete().catch(() => null);
       }, 1000);
       
       return;
@@ -617,8 +640,23 @@ async function handlePostMessageInput(message) {
       if (message.attachments.size > 0) {
         session.attachmentUrl = message.attachments.first().url;
         await message.react('✅');
+        
+        // Show preview and publish buttons
+        const controlRow = new ActionRowBuilder()
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId('post_preview')
+              .setLabel('👁️ Просмотр')
+              .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+              .setCustomId('post_publish')
+              .setLabel('📤 Опубликовать')
+              .setStyle(ButtonStyle.Danger)
+          );
+
         const botReply = await message.reply({
           content: `✅ Фото добавлено к посту!`,
+          components: [controlRow],
           allowedMentions: { repliedUser: false }
         }).catch(() => null);
         
