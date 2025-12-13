@@ -654,11 +654,13 @@ client.on('interactionCreate', async (interaction) => {
           const candidates = searchResults.candidates.slice(0, 10); // limit to 10 options
           const searchId = `search_${Date.now()}_${interaction.user.id}`;
           
+          console.log(`[Music] Building components for ${candidates.length} candidates`);
+          
           // Create select menu or buttons for choosing
           let components = [];
           
-          // If we have select menu support (limit 25 options), use that
-          if (candidates.length <= 25) {
+          try {
+            // ALWAYS prefer select menu for better UX
             const { StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
             const select = new StringSelectMenuBuilder()
               .setCustomId(`music_search_select_${searchId}`)
@@ -666,32 +668,50 @@ client.on('interactionCreate', async (interaction) => {
               .setMinValues(1)
               .setMaxValues(Math.min(candidates.length, 5)); // Allow multi-select up to 5
             
-            for (let i = 0; i < candidates.length; i++) {
+            let optionsAdded = 0;
+            for (let i = 0; i < candidates.length && optionsAdded < 25; i++) {
               const c = candidates[i];
               const label = (c.title || c.url || '').slice(0, 95);
               const desc = `Вариант ${i+1}/${candidates.length}`;
+              
+              if (label.length === 0) continue; // Skip empty labels
+              
               select.addOptions(
                 new StringSelectMenuOptionBuilder()
                   .setLabel(label)
                   .setValue(`${i}`)
                   .setDescription(desc)
               );
+              optionsAdded++;
             }
-            components.push(new ActionRowBuilder().addComponents(select));
-          } else {
-            // Fallback to numbered buttons (1️⃣, 2️⃣, etc.)
+            
+            if (optionsAdded > 0) {
+              components.push(new ActionRowBuilder().addComponents(select));
+              console.log(`[Music] Created select menu with ${optionsAdded} options`);
+            } else {
+              console.warn(`[Music] Failed to create select menu - no valid options`);
+            }
+          } catch (selectError) {
+            console.error('[Music] Select menu creation failed:', selectError.message);
+          }
+          
+          // If select menu failed, create button fallback
+          if (components.length === 0) {
+            console.log('[Music] Creating button fallback...');
             const buttons = [];
             for (let i = 0; i < Math.min(candidates.length, 10); i++) {
               const emoji = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'][i];
+              const label = `${i+1}. ${(candidates[i].title || candidates[i].url || '').slice(0, 15)}...`;
               buttons.push(new ButtonBuilder()
                 .setCustomId(`music_search_btn_${searchId}_${i}`)
-                .setLabel(`${i+1}. ${(candidates[i].title || candidates[i].url || '').slice(0,15)}...`)
-                .setStyle(ButtonStyle.Secondary)
+                .setLabel(label.slice(0, 80))
+                .setStyle(ButtonStyle.Success)
               );
             }
             for (let i = 0; i < buttons.length; i += 5) {
               components.push(new ActionRowBuilder().addComponents(buttons.slice(i, i + 5)));
             }
+            console.log(`[Music] Created button fallback with ${components.length} rows`);
           }
           
           // Store candidates temporarily (in memory, with timeout cleanup)
@@ -699,43 +719,50 @@ client.on('interactionCreate', async (interaction) => {
           global._musicSearchCache[searchId] = { candidates, guildId: guild.id, voiceChannelId: voiceChannel.id, userId: interaction.user.id, timestamp: Date.now(), source: searchResults.source };
           setTimeout(() => { delete global._musicSearchCache[searchId]; }, 120000); // Clear after 120s
           
-          // Show results with detailed info
-          const resultEmbed = new EmbedBuilder()
-            .setTitle(`🎵 Результаты поиска`)
-            .setColor(0x00FF00)
-            .setDescription(`Найдено ${candidates.length} трек(а) по запросу: **${songName}**\n\nВыберите трек из меню ниже или нажмите на номер:`);
+          console.log(`[Music] Final components count: ${components.length}, components ready to send`);
           
-          // Show all candidates in fields
-          const fields = candidates.slice(0, 10).map((c, i) => ({
-            name: `${i+1}️⃣ ${(c.title || c.url || '').slice(0, 60)}`,
-            value: `🔗 ${c.url ? '[Ссылка]' : 'Трек'}`,
-            inline: false
-          }));
-          resultEmbed.addFields(fields);
-          
-          // Make sure we have components before sending
-          if (!components || components.length === 0) {
-            console.warn('[Music] No components generated for search results! Creating fallback...');
-            // Create simple buttons as fallback
-            if (candidates.length > 0) {
-              const buttons = [];
-              for (let i = 0; i < Math.min(candidates.length, 5); i++) {
-                buttons.push(new ButtonBuilder()
-                  .setCustomId(`music_search_btn_${searchId}_${i}`)
-                  .setLabel(`${i+1}. Play`)
-                  .setStyle(ButtonStyle.Success)
-                );
-              }
+          if (components.length === 0) {
+            console.error('[Music] CRITICAL: No components created! Creating emergency fallback buttons...');
+            const buttons = [];
+            for (let i = 0; i < Math.min(candidates.length, 5); i++) {
+              buttons.push(new ButtonBuilder()
+                .setCustomId(`music_search_btn_${searchId}_${i}`)
+                .setLabel(`${i+1}. Вариант`)
+                .setStyle(ButtonStyle.Danger)
+              );
+            }
+            if (buttons.length > 0) {
               components.push(new ActionRowBuilder().addComponents(buttons));
             }
           }
           
+          // Show results with detailed info
+          const resultEmbed = new EmbedBuilder()
+            .setTitle(`🎵 Результаты поиска`)
+            .setColor(0x00FF00)
+            .setDescription(`Найдено ${candidates.length} трек(а) по запросу: **${songName}**\n\n✅ **ВЫБЕРИТЕ ТРЕК из меню ниже:**`);
+          
+          // Show all candidates in fields
+          const fields = candidates.slice(0, 10).map((c, i) => ({
+            name: `${i+1}️⃣ ${(c.title || c.url || '').slice(0, 60)}`,
+            value: `Выберите номер ${i+1}`,
+            inline: false
+          }));
+          resultEmbed.addFields(fields);
+          
           try { 
-            console.log(`[Music] Sending search results with ${components.length} components for "${songName}"`);
-            await interaction.editReply({ embeds: [resultEmbed], components, ephemeral: false }); 
+            console.log(`[Music] SENDING MESSAGE with ${components.length} components for "${songName}"`);
+            const msg = await interaction.editReply({ embeds: [resultEmbed], components, ephemeral: false }); 
+            console.log(`[Music] ✅ Message sent successfully!`);
           } catch (e) { 
-            console.warn('editReply failed', e); 
-            try { await interaction.followUp({ embeds: [resultEmbed], components, ephemeral: false }); } catch (e2) { console.error('followUp also failed', e2); }
+            console.error('❌ editReply failed:', e.message); 
+            try { 
+              console.log('[Music] Trying followUp as fallback...');
+              await interaction.followUp({ embeds: [resultEmbed], components, ephemeral: false }); 
+              console.log('[Music] ✅ followUp sent successfully');
+            } catch (e2) { 
+              console.error('❌ followUp also failed:', e2.message); 
+            }
           }
           return;
         } catch (e) { 
