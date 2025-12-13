@@ -612,12 +612,11 @@ client.on('interactionCreate', async (interaction) => {
         } catch (e) { console.error('music_modal_queue submit error', e); return await safeReply(interaction, { content: 'Ошибка при обработке формы музыки.', ephemeral: true }); }
       }
       // Custom music search modal: find and play
-      if (interaction.customId === 'music_search_modal' || interaction.customId === 'music_search_vk_modal') {
+      if (interaction.customId === 'music_search_modal') {
         try {
           // Defer immediately to avoid timeout
           await interaction.deferReply({ ephemeral: true });
           
-          const isVK = interaction.customId === 'music_search_vk_modal';
           const songName = interaction.fields.getTextInputValue('song_name').slice(0, 200);
           const guild = interaction.guild;
           const member = interaction.member || (guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null);
@@ -627,27 +626,11 @@ client.on('interactionCreate', async (interaction) => {
             return;
           }
           // Show searching message
-          await interaction.editReply({ content: `🔎 Ищу варианты для "${songName}" ${isVK ? 'в VK' : 'на YouTube'}...`, ephemeral: true });
+          await interaction.editReply({ content: `🔎 Ищу варианты для "${songName}"...`, ephemeral: true });
           
           let searchResults = null;
           
-          // Search for candidates
-          if (isVK) {
-            // VK search with fallback to YouTube
-            try {
-              const vkHandler = require('./vk/vkHandler');
-              const vkResults = await vkHandler.searchAudio(songName);
-              if (vkResults && vkResults.length > 0) {
-                searchResults = { candidates: vkResults, source: 'vk' };
-              } else {
-                console.warn('[Music Search] VK returned no results, falling back to YouTube');
-              }
-            } catch (vkErr) {
-              console.warn('[Music Search] VK search failed:', vkErr.message, '- falling back to YouTube');
-              // Fall back to YouTube
-            }
-            
-            // If VK search failed or returned no results, try YouTube
+          // Search on YouTube
             if (!searchResults) {
               try {
                 searchResults = await musicPlayer.findYouTubeUrl(songName).catch(() => null);
@@ -759,14 +742,6 @@ client.on('interactionCreate', async (interaction) => {
         try { await handlePlayerPanelModal(interaction, client); } catch (err) { console.error('Player panel modal error', err); await safeReply(interaction, { content: 'Ошибка при обработке формы.', ephemeral: true }); }
         return;
       }
-      // VK модали
-      if (interaction.customId && interaction.customId.startsWith('vk_id_modal_')) {
-        try {
-          const vkHandler = require('./vk/vkMusicHandler');
-          await vkHandler.handleVkIdModal(interaction);
-        } catch (err) { console.error('VK modal error', err); await safeReply(interaction, { content: 'Ошибка при обработке формы.', ephemeral: true }); }
-        return;
-      }
       // Post Manager modals
       if (interaction.customId && (interaction.customId.startsWith('post_') || interaction.customId.startsWith('pm_'))) {
         try {
@@ -785,14 +760,6 @@ client.on('interactionCreate', async (interaction) => {
     }
     // Handle all select menus (including channel, string select, etc)
     if (interaction.isStringSelectMenu() || interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu() || interaction.isUserSelectMenu()) {
-      // VK music select
-      if (interaction.customId && interaction.customId.startsWith('vk_music_select_')) {
-        try {
-          const vkHandler = require('./vk/vkMusicHandler');
-          await vkHandler.handleMusicSelect(interaction);
-        } catch (err) { console.error('VK music select error', err); await safeReply(interaction, { content: 'Ошибка при выборе.', ephemeral: true }); }
-        return;
-      }
       // Post Manager channel/color select
       if (interaction.customId && (interaction.customId.startsWith('post_') || interaction.customId.startsWith('pm_'))) {
         try { await handlePostManagerSelect(interaction); } catch (err) { console.error('Post manager select error', err); await safeReply(interaction, { content: 'Ошибка при выборе.', ephemeral: true }); }
