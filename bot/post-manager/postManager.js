@@ -25,12 +25,38 @@ const COLOR_PRESETS = {
 
 // Функция для обработки эмодзи в тексте
 // Преобразует текст так, чтобы эмодзи отображались правильно
-async function processEmojiInText(text, client) {
+async function processEmojiInText(text, client, guildId) {
   if (!text) return text;
   
-  // Regex для поиска <:name:id> и <a:name:id> - эти форматы уже правильные
-  // Просто возвращаем текст как есть
-  return text;
+  try {
+    const guild = await client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) return text;
+    
+    const emojis = await guild.emojis.fetch().catch(() => null);
+    if (!emojis) return text;
+    
+    let processed = text;
+    
+    // Ищем все :name: паттерны
+    const emojiPattern = /:(\w+):/g;
+    let match;
+    
+    while ((match = emojiPattern.exec(text)) !== null) {
+      const emojiName = match[1];
+      const emojiObj = emojis.find(e => e.name === emojiName);
+      
+      if (emojiObj) {
+        // Заменяем :name: на <:name:id> или <a:name:id> для анимированных
+        const emojiFormat = emojiObj.animated ? `<a:${emojiName}:${emojiObj.id}>` : `<:${emojiName}:${emojiObj.id}>`;
+        processed = processed.replace(`:${emojiName}:`, emojiFormat);
+      }
+    }
+    
+    return processed;
+  } catch (e) {
+    console.error('[POST_MANAGER] Error processing emoji:', e.message);
+    return text;
+  }
 }
 
 // Build initial post manager embed
@@ -595,7 +621,8 @@ async function handlePostMessageInput(message) {
 
     // First message = title
     if (messageInput.stage === 'title') {
-      session.title = message.content;
+      // Process emoji in title
+      session.title = await processEmojiInText(message.content, message.client, message.guildId);
       // Save attachment if present
       if (message.attachments.size > 0) {
         session.attachmentUrl = message.attachments.first().url;
@@ -618,7 +645,8 @@ async function handlePostMessageInput(message) {
 
     // Second message = content
     if (messageInput.stage === 'content') {
-      session.content = message.content;
+      // Process emoji in content
+      session.content = await processEmojiInText(message.content, message.client, message.guildId);
       // Save attachment if present (overwrite previous if needed)
       if (message.attachments.size > 0) {
         session.attachmentUrl = message.attachments.first().url;
