@@ -631,21 +631,14 @@ client.on('interactionCreate', async (interaction) => {
           let searchResults = null;
           
           // Search on YouTube
-            if (!searchResults) {
-              try {
-                searchResults = await musicPlayer.findYouTubeUrl(songName).catch(() => null);
-                if (searchResults) {
-                  searchResults.source = 'youtube';
-                  console.log('[Music Search] Using YouTube results as fallback for VK search');
-                }
-              } catch (e) {
-                console.error('[Music Search] YouTube fallback failed:', e.message);
-              }
-            }
-          } else {
-            // YouTube search
+          try {
             searchResults = await musicPlayer.findYouTubeUrl(songName).catch(() => null);
-            if (searchResults) searchResults.source = 'youtube';
+            if (searchResults) {
+              searchResults.source = 'youtube';
+              console.log('[Music Search] Found YouTube results');
+            }
+          } catch (e) {
+            console.error('[Music Search] YouTube search failed:', e.message);
           }
           
           if (!searchResults || !searchResults.candidates || searchResults.candidates.length === 0) {
@@ -1572,4 +1565,10 @@ process.on('unhandledRejection', (reason, promise) => {
   // Don't exit - let bot continue running
 });
 
-client.login(token);
+console.log('🚀 [MAIN] Attempting to login with token...');
+client.login(token).then(() => {
+  console.log('🟢 [MAIN] Client logged in successfully');
+}).catch(err => {
+  console.error('🔴 [MAIN] Login failed:', err.message);
+});
+
