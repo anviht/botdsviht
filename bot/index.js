@@ -632,17 +632,22 @@ client.on('interactionCreate', async (interaction) => {
           
           // Search on YouTube
           try {
+            console.log(`[Music] Searching for: "${songName}"`);
             searchResults = await musicPlayer.findYouTubeUrl(songName).catch(() => null);
-            if (searchResults) {
+            if (searchResults && searchResults.candidates) {
               searchResults.source = 'youtube';
-              console.log('[Music Search] Found YouTube results');
+              console.log(`[Music Search] Found ${searchResults.candidates.length} YouTube results for "${songName}"`);
+            } else {
+              console.log(`[Music Search] No results found for "${songName}"`);
             }
           } catch (e) {
             console.error('[Music Search] YouTube search failed:', e.message);
           }
           
           if (!searchResults || !searchResults.candidates || searchResults.candidates.length === 0) {
-            try { await interaction.followUp({ content: `❌ Не найдено вариантов для "${songName}". Попробуйте другой поиск.`, ephemeral: true }); } catch (e) {}
+            console.warn(`[Music] No candidates found for "${songName}"`);
+            try { await interaction.editReply({ content: `❌ Не найдено вариантов для "${songName}". Попробуйте другой поиск.`, ephemeral: true }); } catch (e) {}
+            try { await interaction.followUp({ content: `❌ Не найдено вариантов для "${songName}". Попробуйте другой поиск.`, ephemeral: true }); } catch (e2) {}
             return;
           }
           
@@ -708,11 +713,29 @@ client.on('interactionCreate', async (interaction) => {
           }));
           resultEmbed.addFields(fields);
           
+          // Make sure we have components before sending
+          if (!components || components.length === 0) {
+            console.warn('[Music] No components generated for search results! Creating fallback...');
+            // Create simple buttons as fallback
+            if (candidates.length > 0) {
+              const buttons = [];
+              for (let i = 0; i < Math.min(candidates.length, 5); i++) {
+                buttons.push(new ButtonBuilder()
+                  .setCustomId(`music_search_btn_${searchId}_${i}`)
+                  .setLabel(`${i+1}. Play`)
+                  .setStyle(ButtonStyle.Success)
+                );
+              }
+              components.push(new ActionRowBuilder().addComponents(buttons));
+            }
+          }
+          
           try { 
+            console.log(`[Music] Sending search results with ${components.length} components for "${songName}"`);
             await interaction.editReply({ embeds: [resultEmbed], components, ephemeral: false }); 
           } catch (e) { 
             console.warn('editReply failed', e); 
-            try { await interaction.followUp({ embeds: [resultEmbed], components, ephemeral: false }); } catch (e2) {}
+            try { await interaction.followUp({ embeds: [resultEmbed], components, ephemeral: false }); } catch (e2) { console.error('followUp also failed', e2); }
           }
           return;
         } catch (e) { 
