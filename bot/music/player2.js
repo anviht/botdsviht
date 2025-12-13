@@ -276,6 +276,12 @@ async function findYouTubeUrl(query) {
       return tokens.length > 0 ? matchedTokens / tokens.length : 0;
     }
 
+    // Check if query looks like "artist - song" format
+    const hasArtistSeparator = /\s*[-–—]\s*/.test(query);
+    const queryParts = hasArtistSeparator ? query.split(/\s*[-–—]\s*/) : [query];
+    const artistName = hasArtistSeparator ? queryParts[0].trim().toLowerCase() : '';
+    const songName = hasArtistSeparator ? queryParts[queryParts.length - 1].trim().toLowerCase() : queryLower;
+
     // Helper to compute a relevance score for each video
     function scoreVideo(v) {
       const title = (v.title || '').toLowerCase();
@@ -306,21 +312,31 @@ async function findYouTubeUrl(query) {
       score += matchQuality * 200; // Heavy bonus for matching more query words
 
       // Strongly prefer official audio/music sources
-      const musicIndicators = ['official audio', 'official music', 'audio', 'official video', 'music video', 'official', 'vevo', 'topic'];
+      const musicIndicators = ['official audio', 'official music', 'audio only', 'official video', 'music video', 'official', 'vevo', 'topic'];
       let hasMusic = false;
       for (const mi of musicIndicators) {
         if (author.includes(mi) || title.includes(mi)) {
           hasMusic = true;
-          if (mi === 'official audio' || mi === 'official music') score += 100;
-          else if (mi === 'audio' || mi === 'vevo' || mi === 'topic') score += 50;
-          else score += 20;
+          if (mi === 'official audio' || mi === 'official music') score += 150;
+          else if (mi === 'audio only' || mi === 'audio') score += 100;
+          else if (mi === 'vevo' || mi === 'topic') score += 80;
+          else score += 30;
+        }
+      }
+      
+      // If query has "artist - song" format, strongly prefer videos that match the artist
+      if (hasArtistSeparator && artistName.length > 2) {
+        if (author.includes(artistName) || title.includes(artistName)) {
+          score += 150; // Big bonus for matching artist
+        } else {
+          score -= 80; // Penalty if artist doesn't match
         }
       }
       
       // If query looks like song name (has "artist - song" or similar), require it's not a cover/remix/parody
       const isSongQuery = /\s*-\s*/.test(queryLower) || queryLower.split(' ').length <= 5;
       if (isSongQuery) {
-        const avoidKeywords = ['cover', 'remix', 'edit', 'parody', 'tribute', 'reaction', 'tutorial', 'lesson', 'how to'];
+        const avoidKeywords = ['cover', 'remix', 'edit', 'parody', 'tribute', 'reaction', 'tutorial', 'lesson', 'how to', 'karaoke', 'instrumental'];
         for (const ak of avoidKeywords) {
           if (title.includes(ak) && !author.includes(ak)) score -= 40;
         }
@@ -373,8 +389,21 @@ async function findYouTubeUrl(query) {
 
     // If nothing good found, try targeted searches to prefer official audio/lyrics
     if (!vids.length) {
-      // Prioritize: official audio > official music > official > lyrics > audio
-      const variants = [`${query} official audio`, `${query} official music`, `${query} official`, `${query} lyrics`, `${query} audio`];
+      // For "artist - song" queries, try search in specific order
+      let variants = [];
+      if (hasArtistSeparator) {
+        variants = [
+          `${query}`, // Original
+          `${artistName} ${songName} official`, // artist + song + official
+          `${query} official audio`,
+          `${artistName} - ${songName} official`, 
+          `${songName} ${artistName}`,
+          `${query} official`
+        ];
+      } else {
+        variants = [`${query} official audio`, `${query} official music`, `${query} official`, `${query} lyrics`, `${query} audio`];
+      }
+      
       for (const vq of variants) {
         try {
           const rr = await yts(vq);
