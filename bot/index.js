@@ -760,6 +760,25 @@ client.on('interactionCreate', async (interaction) => {
     }
     // Handle all select menus (including channel, string select, etc)
     if (interaction.isStringSelectMenu() || interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu() || interaction.isUserSelectMenu()) {
+      // Viht Moroz - module toggle
+      if (interaction.customId === 'moroz_select') {
+        try {
+          await db.ensureReady();
+          const moduleStates = db.get('botModules') || {};
+          const selectedModule = interaction.values[0];
+          
+          // Переключаем состояние
+          moduleStates[selectedModule] = !moduleStates[selectedModule];
+          await db.set('botModules', moduleStates);
+          
+          const status = moduleStates[selectedModule] ? '✅ Включен' : '❌ Отключен';
+          await interaction.reply({
+            content: `${status}`,
+            ephemeral: true
+          }).catch(() => null);
+        } catch (err) { console.error('Moroz toggle error', err); await safeReply(interaction, { content: 'Ошибка при переключении.', ephemeral: true }); }
+        return;
+      }
       // Post Manager channel/color select
       if (interaction.customId && (interaction.customId.startsWith('post_') || interaction.customId.startsWith('pm_'))) {
         try { await handlePostManagerSelect(interaction); } catch (err) { console.error('Post manager select error', err); await safeReply(interaction, { content: 'Ошибка при выборе.', ephemeral: true }); }
