@@ -29,13 +29,13 @@ async function logMusicPlay(guild, userId, trackData, voiceChannelName) {
     // Формируем логовое сообщение
     const logMessage = `📻 ${timestamp} - **${username}** - \`${trackTitle}\` (${voiceChannelName || 'Unknown Voice'})`;
     
-    // Отправляем в логов-канал
-    if (guild.client) {
-      const logChannel = await guild.client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-      if (logChannel && logChannel.isTextBased()) {
-        try { await logChannel.send(logMessage).catch(e => console.error('Failed to send log message:', e && e.message)); } catch (e) { console.error('Failed to send log message:', e && e.message); }
-      }
-    }
+    // ❌ ОТКЛЮЧЕНО: Отправка лог-сообщения в канал (раздражало юзеров)
+    // if (guild.client) {
+    //   const logChannel = await guild.client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+    //   if (logChannel && logChannel.isTextBased()) {
+    //     try { await logChannel.send(logMessage).catch(e => console.error('Failed to send log message:', e && e.message)); } catch (e) { console.error('Failed to send log message:', e && e.message); }
+    //   }
+    // }
     
     // Сохраняем в базу данных для хистории
     const musicLogs = db.get('musicLogs') || [];
