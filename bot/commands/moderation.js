@@ -270,10 +270,27 @@ module.exports.handleModal = async (interaction) => {
         });
       }
 
+      // Убедимся, что директория существует
+      const dir = path.dirname(BADWORDS_FILE);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
       // Читаем текущий файл
       let data = { words: [] };
-      if (fs.existsSync(BADWORDS_FILE)) {
-        data = JSON.parse(fs.readFileSync(BADWORDS_FILE, 'utf8'));
+      try {
+        if (fs.existsSync(BADWORDS_FILE)) {
+          const content = fs.readFileSync(BADWORDS_FILE, 'utf8');
+          data = JSON.parse(content);
+        }
+      } catch (parseErr) {
+        console.warn('Could not parse badwords.json, creating new:', parseErr.message);
+        data = { words: [] };
+      }
+
+      // Убеждаемся что words это массив
+      if (!Array.isArray(data.words)) {
+        data.words = [];
       }
 
       // Проверяем дубликат
@@ -289,13 +306,13 @@ module.exports.handleModal = async (interaction) => {
       fs.writeFileSync(BADWORDS_FILE, JSON.stringify(data, null, 2), 'utf8');
 
       await interaction.reply({
-        content: `✅ Слово "${word}" добавлено в список запретных`,
+        content: `✅ Слово "${word}" добавлено в список запретных (всего: ${data.words.length})`,
         ephemeral: true
       });
     } catch (e) {
       console.error('Error adding badword:', e);
       await interaction.reply({
-        content: '❌ Ошибка при добавлении слова',
+        content: `❌ Ошибка при добавлении слова: ${e.message || e}`,
         ephemeral: true
       });
     }
@@ -312,7 +329,21 @@ module.exports.handleModal = async (interaction) => {
         });
       }
 
-      const data = JSON.parse(fs.readFileSync(BADWORDS_FILE, 'utf8'));
+      let data = { words: [] };
+      try {
+        const content = fs.readFileSync(BADWORDS_FILE, 'utf8');
+        data = JSON.parse(content);
+      } catch (parseErr) {
+        console.warn('Could not parse badwords.json:', parseErr.message);
+        return await interaction.reply({
+          content: '❌ Ошибка при чтении файла',
+          ephemeral: true
+        });
+      }
+
+      if (!Array.isArray(data.words)) {
+        data.words = [];
+      }
 
       // Проверяем наличие слова
       const index = data.words.indexOf(word);
@@ -328,13 +359,13 @@ module.exports.handleModal = async (interaction) => {
       fs.writeFileSync(BADWORDS_FILE, JSON.stringify(data, null, 2), 'utf8');
 
       await interaction.reply({
-        content: `✅ Слово "${word}" удалено из списка`,
+        content: `✅ Слово "${word}" удалено из списка (осталось: ${data.words.length})`,
         ephemeral: true
       });
     } catch (e) {
       console.error('Error removing badword:', e);
       await interaction.reply({
-        content: '❌ Ошибка при удалении слова',
+        content: `❌ Ошибка при удалении слова: ${e.message || e}`,
         ephemeral: true
       });
     }
