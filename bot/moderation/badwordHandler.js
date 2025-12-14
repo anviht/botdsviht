@@ -99,8 +99,10 @@ global.badwordProcessing = global.badwordProcessing || false;
  * Обрабатывает очередь матов по одному
  */
 async function processBadwordQueue(client) {
+  if (!global.badwordQueue) global.badwordQueue = [];
   if (global.badwordProcessing || global.badwordQueue.length === 0) return;
   
+  console.log(`[BADWORD-QUEUE] Начало обработки очереди, размер: ${global.badwordQueue.length}`);
   global.badwordProcessing = true;
   try {
     while (global.badwordQueue.length > 0) {
@@ -133,11 +135,18 @@ function getProgressiveMuteDuration(violationCount) {
  * Обработка одного нарушения мата
  */
 async function handleBadwordMute(message, foundBadwords, client) {
+  console.log(`[BADWORD-MUTE] Обработка: ${message.author.tag} | маты: ${foundBadwords.join(', ')}`);
   const guild = message.guild;
-  if (!guild) return;
+  if (!guild) {
+    console.log('[BADWORD-MUTE] Нет гильдии!');
+    return;
+  }
 
   const member = message.member;
-  if (!member || !member.roles) return;
+  if (!member || !member.roles) {
+    console.log('[BADWORD-MUTE] Нет member или roles!');
+    return;
+  }
 
   const userId = message.author.id;
 
@@ -227,11 +236,13 @@ async function handleBadwordMute(message, foundBadwords, client) {
   try {
     // Сохраняем текущие роли пользователя
     currentRoles = member.roles.cache.filter(r => r.id !== member.guild.id && r.id !== (mutedRole.id)).map(r => r.id);
+    console.log(`[BADWORD-MUTE] Снимаем роли: ${currentRoles.length} штук`);
     if (currentRoles.length > 0) {
       try {
         await member.roles.remove(currentRoles, 'Снятие ролей для автоматического мута').catch(() => null);
+        console.log(`[BADWORD-MUTE] ✓ Роли сняты`);
       } catch (e) {
-        // игнорируем ошибки
+        console.log(`[BADWORD-MUTE] Ошибка снятия ролей: ${e.message}`);
       }
     }
     
@@ -240,8 +251,9 @@ async function handleBadwordMute(message, foundBadwords, client) {
 
     // Выдаём роль Muted
     await member.roles.add(mutedRole, `Автоматический мьют за матерные слова: ${foundBadwords.slice(0, 3).join(', ')}${foundBadwords.length > 3 ? '...' : ''}`);
+    console.log(`[BADWORD-MUTE] ✓ Добавлена роль Muted (${muteMinutes} минут)`);
   } catch (e) {
-    console.error('Failed to mute member:', e.message);
+    console.error('[BADWORD-MUTE] Ошибка при мутировании:', e.message);
     return;
   }
 
@@ -409,6 +421,7 @@ async function checkMessage(message, client) {
     if (!message.content || message.content.length === 0) return;
 
     const content = message.content;
+    console.log(`[BADWORD-CHECK] Проверка сообщения: "${content.slice(0, 50)}"`);
     const foundBadwords = [];
     
     // Нормализируем весь текст сообщения сразу
@@ -468,9 +481,14 @@ async function checkMessage(message, client) {
 
     if (foundBadwords.length === 0) return;
 
+    console.log(`[BADWORD] 🚨 НАЙДЕНЫ МАТЫ! Количество: ${foundBadwords.length}, слова: ${foundBadwords.slice(0, 3).join(', ')}`);
+
+    // Инициализируем очередь если её нет
+    if (!global.badwordQueue) global.badwordQueue = [];
+    
     // Добавляем в очередь вместо параллельной обработки
-    global.badwordQueue = global.badwordQueue || [];
     global.badwordQueue.push({ message, foundBadwords });
+    console.log(`[BADWORD] Очередь размер: ${global.badwordQueue.length}`);
     
     // Начинаем обработку очереди
     processBadwordQueue(client);
