@@ -252,6 +252,20 @@ client.on('interactionCreate', async (interaction) => {
         try { await handlePlayerPanelButton(interaction, client); } catch (err) { console.error('Player panel button error', err); await safeReply(interaction, { content: 'Ошибка при управлении плеером.', ephemeral: true }); }
         return;
       }
+      // Statistics graph buttons (grafs command)
+      if (interaction.customId && (interaction.customId.startsWith('grafs_recent') || interaction.customId.startsWith('grafs_all') || interaction.customId.startsWith('grafs_test') || interaction.customId === 'grafs_back')) {
+        try {
+          const grafsCommand = client.commands.get('grafs');
+          if (grafsCommand) {
+            if (interaction.customId === 'grafs_back') {
+              await grafsCommand.handleBackButton(interaction);
+            } else {
+              await grafsCommand.handleButton(interaction);
+            }
+          }
+        } catch (err) { console.error('Grafs button error', err); await safeReply(interaction, { content: 'Ошибка при загрузке статистики.', ephemeral: true }); }
+        return;
+      }
       // Music/Radio buttons
         // Control panel buttons (cabinet, main menu, etc)
         if (interaction.customId.includes('cabinet') || interaction.customId.includes('main_menu') || interaction.customId === 'info_btn') {
@@ -850,6 +864,23 @@ client.on('interactionCreate', async (interaction) => {
 client.on('guildMemberAdd', async (member) => {
   try {
     await db.ensureReady();
+    
+    // Track user join for statistics
+    try {
+      const statsTracker = require('./libs/statsTracker');
+      statsTracker.initStats();
+      statsTracker.trackUserJoin(member.id, member.guild.id);
+      
+      // Track user role
+      if (member.roles.cache.size > 0) {
+        member.roles.cache.forEach(role => {
+          statsTracker.trackUserRole(member.id, role.name);
+        });
+      }
+    } catch (e) {
+      console.warn('Stats tracking failed:', e.message);
+    }
+    
     const prefs = db.get('prefs') || {};
     const enabled = (prefs.onboarding && prefs.onboarding[member.id] !== false);
     if (!enabled) return;
@@ -1033,6 +1064,20 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   try {
     const guild = newMember.guild || oldMember.guild;
     if (!guild) return;
+    
+    // Track boost if user got premium role
+    try {
+      const oldPremiumRoles = oldMember.roles.cache.filter(r => r.name.toLowerCase().includes('premium') || r.name.toLowerCase().includes('boost'));
+      const newPremiumRoles = newMember.roles.cache.filter(r => r.name.toLowerCase().includes('premium') || r.name.toLowerCase().includes('boost'));
+      
+      if (newPremiumRoles.size > oldPremiumRoles.size) {
+        const statsTracker = require('./libs/statsTracker');
+        statsTracker.trackBoost(newMember.id, guild.id);
+      }
+    } catch (e) {
+      console.warn('Boost tracking failed:', e.message);
+    }
+    
     const oldNick = oldMember.nickname || oldMember.displayName || '';
     const newNick = newMember.nickname || newMember.displayName || '';
     if (oldNick !== newNick) {
