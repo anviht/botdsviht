@@ -814,6 +814,23 @@ client.on('interactionCreate', async (interaction) => {
         try { await handlePlayerPanelModal(interaction, client); } catch (err) { console.error('Player panel modal error', err); await safeReply(interaction, { content: 'Ошибка при обработке формы.', ephemeral: true }); }
         return;
       }
+      // Post announcement modals
+      if (interaction.customId === 'post_modal') {
+        try {
+          const postCommand = require('./commands/post');
+          if (postCommand.handleModal) {
+            await postCommand.handleModal(interaction);
+          }
+        } catch (err) { 
+          console.error('[POST] Ошибка модали:', err.message); 
+          try {
+            await safeReply(interaction, { content: '❌ Ошибка: ' + (err.message || err), ephemeral: true });
+          } catch (replyErr) {
+            console.error('[POST] Не удалось отправить ошибку:', replyErr.message);
+          }
+        }
+        return;
+      }
       // Post Manager modals
       if (interaction.customId && (interaction.customId.startsWith('post_') || interaction.customId.startsWith('pm_'))) {
         try {
