@@ -273,7 +273,7 @@ client.on('interactionCreate', async (interaction) => {
           return;
         }
       if (interaction.customId.startsWith('music_') || interaction.customId.startsWith('radio_')) {
-        try { await handleMusicButton(interaction); } catch (err) { console.error('Music button error', err); await safeReply(interaction, { content: 'Ошибка при обработке кнопки музыки.', ephemeral: true }); }
+        try { await handlePlayerPanelButton(interaction, client); } catch (err) { console.error('Music button error', err); await safeReply(interaction, { content: 'Ошибка при обработке кнопки музыки.', ephemeral: true }); }
         return;
       }
       // Profile buttons
@@ -1428,9 +1428,21 @@ client.once('ready', async () => {
   try {
     const { joinVoiceChannel, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
     const DEFAULT_VOICE_CHANNEL_ID = '1449757724274589829';
-    const guild = await client.guilds.fetch('1446797048373207172').catch(() => null); // Main server guild ID
-    if (guild) {
-      const voiceChannel = await guild.channels.fetch(DEFAULT_VOICE_CHANNEL_ID).catch(() => null);
+    const DEFAULT_GUILD_ID = '1428051812103094282'; // Получить из конфига или переменной окружения
+    
+    const guild = await client.guilds.fetch(DEFAULT_GUILD_ID).catch((err) => {
+      console.warn('[VOICE] ❌ Failed to fetch guild:', DEFAULT_GUILD_ID, err?.message);
+      return null;
+    });
+    
+    if (!guild) {
+      console.warn('[VOICE] Guild not found, skipping default channel connection');
+    } else {
+      const voiceChannel = await guild.channels.fetch(DEFAULT_VOICE_CHANNEL_ID).catch((err) => {
+        console.warn('[VOICE] Failed to fetch default voice channel:', DEFAULT_VOICE_CHANNEL_ID, err?.message);
+        return null;
+      });
+      
       if (voiceChannel && voiceChannel.isVoiceBased?.()) {
         try {
           const connection = joinVoiceChannel({
@@ -1446,10 +1458,8 @@ client.once('ready', async () => {
           console.warn('[VOICE] Failed to connect to default channel:', e && e.message);
         }
       } else {
-        console.warn('[VOICE] Default voice channel not found or not voice-based');
+        console.warn('[VOICE] Default voice channel not found or not voice-based:', DEFAULT_VOICE_CHANNEL_ID);
       }
-    } else {
-      console.warn('[VOICE] Failed to fetch guild for default voice channel connection');
     }
   } catch (e) {
     console.warn('[VOICE] Default voice channel initialization failed:', e.message);

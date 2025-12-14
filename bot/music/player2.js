@@ -1348,15 +1348,24 @@ async function stop(guild) {
       const DEFAULT_VOICE_CHANNEL_ID = '1449757724274589829';
       const voiceChannel = await guild.channels.fetch(DEFAULT_VOICE_CHANNEL_ID).catch(() => null);
       if (voiceChannel && voiceChannel.isVoiceBased?.()) {
-        const connection = joinVoiceChannel({
-          channelId: DEFAULT_VOICE_CHANNEL_ID,
-          guildId: guild.id,
-          adapterCreator: guild.voiceAdapterCreator,
-          selfDeaf: false,
-          selfMute: false
-        });
-        await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
-        console.log('[VOICE] ✅ Бот вернулся в стандартный канал после остановки музыки');
+        try {
+          const connection = joinVoiceChannel({
+            channelId: DEFAULT_VOICE_CHANNEL_ID,
+            guildId: guild.id,
+            adapterCreator: guild.voiceAdapterCreator,
+            selfDeaf: false,
+            selfMute: false
+          });
+          await entersState(connection, VoiceConnectionStatus.Ready, 10_000).catch((err) => {
+            // Operation might be aborted if guild is closing, ignore
+            console.warn('[VOICE] Failed to wait for connection ready:', err?.message);
+          });
+          console.log('[VOICE] ✅ Бот вернулся в стандартный канал после остановки музыки');
+        } catch (joinErr) {
+          console.warn('[VOICE] Error joining default channel:', joinErr?.message);
+        }
+      } else {
+        console.warn('[VOICE] Default voice channel not found or not voice-based');
       }
     } catch (e) {
       console.warn('[VOICE] Не удалось вернуться в стандартный канал:', e && e.message);
