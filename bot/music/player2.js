@@ -626,6 +626,25 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
     // Clear the stop flag when starting new playback
     state._userRequestedStop = false;
 
+    // 🔍 ЛОГИРОВАНИЕ: проверяем voiceChannel
+    console.log('[playNow] 🎤 voiceChannel:', {
+      exists: !!voiceChannel,
+      id: voiceChannel?.id,
+      name: voiceChannel?.name,
+      type: voiceChannel?.type,
+      isVoiceBased: voiceChannel?.isVoiceBased?.()
+    });
+
+    if (!voiceChannel) {
+      console.error('[playNow] ❌ voiceChannel is NULL/UNDEFINED!');
+      const clientForPanel = (state && state._client) ? state._client : (guild && guild.client ? guild.client : null);
+      const msgText = '❌ Ошибка: голосовой канал не определён. Попробуйте снова занять плеер.';
+      let updated = false;
+      if (clientForPanel) updated = await updateControlMessageWithError(guild.id, clientForPanel, msgText).catch(() => false);
+      if (!updated) await notifyOwner(guild.id, state, userId, msgText);
+      return false;
+    }
+
     // Owner check: if someone else owns the player, deny interruption
     try {
       if (state && state.current && state.current.owner && userId && state.current.owner !== String(userId)) {

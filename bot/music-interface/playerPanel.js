@@ -447,13 +447,22 @@ async function handleSearchSelectMenu(interaction, client) {
     const cache = global._playerSearchCache?.[searchId];
     
     if (!cache) {
+      console.warn('[PLAYER] Cache not found for searchId:', searchId);
       return await interaction.deferUpdate().catch(() => null);
     }
+    
+    console.log('[PLAYER] 🎵 handleSearchSelectMenu - cache:', {
+      guildId: cache.guildId,
+      voiceChannelId: cache.voiceChannelId,
+      userId: cache.userId,
+      session: cache.session
+    });
     
     const selectedIndex = parseInt(interaction.values[0]);
     const selectedTrack = cache.candidates[selectedIndex];
     
     if (!selectedTrack) {
+      console.warn('[PLAYER] Track not found at index:', selectedIndex);
       return await interaction.deferUpdate().catch(() => null);
     }
     
@@ -462,10 +471,29 @@ async function handleSearchSelectMenu(interaction, client) {
     
     // Get guild and voice channel
     const guild = await client.guilds.fetch(cache.guildId).catch(() => null);
-    if (!guild) return await interaction.deferUpdate().catch(() => null);
+    if (!guild) {
+      console.error('[PLAYER] ❌ Guild not found:', cache.guildId);
+      return await interaction.deferUpdate().catch(() => null);
+    }
     
-    const voiceChannel = await guild.channels.fetch(cache.voiceChannelId).catch(() => null);
-    if (!voiceChannel) return await interaction.deferUpdate().catch(() => null);
+    if (!cache.voiceChannelId) {
+      console.error('[PLAYER] ❌ voiceChannelId is NULL/UNDEFINED in cache!');
+      const embed = buildPlayingEmbed(cache.session || { userId: cache.userId }, '❌ Ошибка: ID канала не найден');
+      await interaction.update({ embeds: [embed] }).catch(() => null);
+      return;
+    }
+    
+    const voiceChannel = await guild.channels.fetch(cache.voiceChannelId).catch((err) => {
+      console.error('[PLAYER] ❌ Failed to fetch voice channel:', cache.voiceChannelId, err?.message);
+      return null;
+    });
+    
+    if (!voiceChannel) {
+      console.error('[PLAYER] ❌ voiceChannel is NULL after fetch');
+      const embed = buildPlayingEmbed(cache.session || { userId: cache.userId }, '❌ Голосовой канал не найден');
+      await interaction.update({ embeds: [embed] }).catch(() => null);
+      return;
+    }
     
     // Update the message to show now playing
     const { EmbedBuilder, ActionRowBuilder } = require('discord.js');
@@ -508,6 +536,7 @@ async function handleSearchButton(interaction, client) {
     const match = customId.match(/player_search_btn_(.+?)_(\d+)$/);
     
     if (!match) {
+      console.warn('[PLAYER] handleSearchButton - customId does not match pattern:', customId);
       return await interaction.deferUpdate().catch(() => null);
     }
     
@@ -516,12 +545,20 @@ async function handleSearchButton(interaction, client) {
     const cache = global._playerSearchCache?.[searchId];
     
     if (!cache) {
+      console.warn('[PLAYER] Cache not found for button searchId:', searchId);
       return await interaction.deferUpdate().catch(() => null);
     }
+    
+    console.log('[PLAYER] 🎵 handleSearchButton - cache:', {
+      guildId: cache.guildId,
+      voiceChannelId: cache.voiceChannelId,
+      userId: cache.userId
+    });
     
     const selectedTrack = cache.candidates[selectedIndex];
     
     if (!selectedTrack) {
+      console.warn('[PLAYER] Track not found at index:', selectedIndex);
       return await interaction.deferUpdate().catch(() => null);
     }
     
@@ -530,10 +567,29 @@ async function handleSearchButton(interaction, client) {
     
     // Get guild and voice channel
     const guild = await client.guilds.fetch(cache.guildId).catch(() => null);
-    if (!guild) return await interaction.deferUpdate().catch(() => null);
+    if (!guild) {
+      console.error('[PLAYER] ❌ Guild not found:', cache.guildId);
+      return await interaction.deferUpdate().catch(() => null);
+    }
     
-    const voiceChannel = await guild.channels.fetch(cache.voiceChannelId).catch(() => null);
-    if (!voiceChannel) return await interaction.deferUpdate().catch(() => null);
+    if (!cache.voiceChannelId) {
+      console.error('[PLAYER] ❌ voiceChannelId is NULL/UNDEFINED in cache (handleSearchButton)!');
+      const embed = buildPlayingEmbed(cache.session || { userId: cache.userId }, '❌ Ошибка: ID канала не найден');
+      await interaction.update({ embeds: [embed] }).catch(() => null);
+      return;
+    }
+    
+    const voiceChannel = await guild.channels.fetch(cache.voiceChannelId).catch((err) => {
+      console.error('[PLAYER] ❌ Failed to fetch voice channel (button):', cache.voiceChannelId, err?.message);
+      return null;
+    });
+    
+    if (!voiceChannel) {
+      console.error('[PLAYER] ❌ voiceChannel is NULL after fetch (button)');
+      const embed = buildPlayingEmbed(cache.session || { userId: cache.userId }, '❌ Голосовой канал не найден');
+      await interaction.update({ embeds: [embed] }).catch(() => null);
+      return;
+    }
     
     // Update the message to show now playing
     const { EmbedBuilder } = require('discord.js');
