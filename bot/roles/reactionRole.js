@@ -23,10 +23,8 @@ async function sendWelcomeMessage(client, channelId) {
   }
 
   const embed = new EmbedBuilder()
-    .setTitle('🎉 Добро пожаловать на сервер Viht')
     .setColor(0xFF006E)
-    .setThumbnail('https://media.discordapp.net/attachments/1446801265219604530/1449749530139693166/image_1.jpg?ex=694007f7&is=693eb677&hm=064f42d3b3d9b6c47515e949319c6c62d86d99b950b21d548f94a7ac60faa19a&=&format=webp')
-    .setDescription('Тут собираются люди для общения и развития. Присоединись к нам! 🚀')
+    .setImage('https://media.discordapp.net/attachments/1446801265219604530/1449749530139693166/image_1.jpg?ex=694007f7&is=693eb677&hm=064f42d3b3d9b6c47515e949319c6c62d86d99b950b21d548f94a7ac60faa19a&=&format=webp')
     .setFooter({ text: '💡 Нажми ✅ для входа, убери галочку для выхода' });
 
   try {
