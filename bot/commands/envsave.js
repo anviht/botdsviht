@@ -11,9 +11,11 @@ module.exports = {
     .setDescription('💾 Сохранить отредактированный .env файл'),
 
   async execute(interaction) {
-    // Проверка прав (только владелец бота)
-    const OWNER_ID = '363411627215560714'; // Замени на свой ID
-    if (interaction.user.id !== OWNER_ID) {
+    // Проверка прав (роль)
+    const ALLOWED_ROLE_ID = '1436485697392607303';
+    const member = interaction.member;
+    
+    if (!member || !member.roles.cache.has(ALLOWED_ROLE_ID)) {
       return await interaction.reply({
         content: '❌ У тебя нет прав для этой команды!',
         ephemeral: true
