@@ -749,8 +749,6 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
     
     if (!connection) {
       console.log('playNow: Creating new voice connection for guild', guild.id);
-
-      }
       
       try {
         connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
