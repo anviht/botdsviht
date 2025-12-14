@@ -705,29 +705,51 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
     } catch (e) { /* ignore */ }
 
     let connection = getVoiceConnection(guild.id);
+    
+    // Проверяем наличие голосового канала
+    if (!voiceChannel) {
+      console.error('playNow: voiceChannel is null or undefined');
+      const clientForPanel = (state && state._client) ? state._client : (guild && guild.client ? guild.client : null);
+      const msgText = '❌ Голосовой канал недоступен. Убедитесь, что вы находитесь в голосовом канале.';
+      let updated = false;
+      if (clientForPanel) updated = await updateControlMessageWithError(guild.id, clientForPanel, msgText).catch(() => false);
+      if (!updated) await notifyOwner(guild.id, state, userId, msgText);
+      return false;
+    }
+    
+    // Проверяем права доступа бота на голосовой канал
+    if (!voiceChannel.permissionsFor(guild.members.me)?.has('Connect')) {
+      console.error('playNow: Bot does not have CONNECT permission in voice channel');
+      const clientForPanel = (state && state._client) ? state._client : (guild && guild.client ? guild.client : null);
+      const msgText = '❌ Бот не имеет доступа к голосовому каналу. Проверьте права доступа.';
+      let updated = false;
+      if (clientForPanel) updated = await updateControlMessageWithError(guild.id, clientForPanel, msgText).catch(() => false);
+      if (!updated) await notifyOwner(guild.id, state, userId, msgText);
+      return false;
+    }
+    
+    // Если уже есть соединение, но в другом канале - переключиться на новый
+    if (connection) {
+      console.log('[playNow] 🔄 Существующее соединение найдено, проверяем канал...');
+      const currentChannelId = connection.joinConfig.channelId;
+      
+      if (currentChannelId !== voiceChannel.id) {
+        console.log('[playNow] 🎤 Переключаемся с канала', currentChannelId, 'на', voiceChannel.id);
+        try {
+          connection.destroy();
+          connection = null;
+          state.connection = null;
+        } catch (e) {
+          console.warn('[playNow] Ошибка уничтожения старого соединения:', e?.message);
+        }
+      } else {
+        console.log('[playNow] ✅ Уже в нужном канале');
+      }
+    }
+    
     if (!connection) {
       console.log('playNow: Creating new voice connection for guild', guild.id);
-      
-      // Проверяем наличие голосового канала
-      if (!voiceChannel) {
-        console.error('playNow: voiceChannel is null or undefined');
-        const clientForPanel = (state && state._client) ? state._client : (guild && guild.client ? guild.client : null);
-        const msgText = '❌ Голосовой канал недоступен. Убедитесь, что вы находитесь в голосовом канале.';
-        let updated = false;
-        if (clientForPanel) updated = await updateControlMessageWithError(guild.id, clientForPanel, msgText).catch(() => false);
-        if (!updated) await notifyOwner(guild.id, state, userId, msgText);
-        return false;
-      }
-      
-      // Проверяем права доступа бота на голосовой канал
-      if (!voiceChannel.permissionsFor(guild.members.me)?.has('Connect')) {
-        console.error('playNow: Bot does not have CONNECT permission in voice channel');
-        const clientForPanel = (state && state._client) ? state._client : (guild && guild.client ? guild.client : null);
-        const msgText = '❌ Бот не имеет доступа к голосовому каналу. Проверьте права доступа.';
-        let updated = false;
-        if (clientForPanel) updated = await updateControlMessageWithError(guild.id, clientForPanel, msgText).catch(() => false);
-        if (!updated) await notifyOwner(guild.id, state, userId, msgText);
-        return false;
+
       }
       
       try {
