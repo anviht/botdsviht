@@ -688,11 +688,46 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
     let connection = getVoiceConnection(guild.id);
     if (!connection) {
       console.log('playNow: Creating new voice connection for guild', guild.id);
-      connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
-      state.connection = connection;
+      
+      // Проверяем наличие голосового канала
+      if (!voiceChannel) {
+        console.error('playNow: voiceChannel is null or undefined');
+        const clientForPanel = (state && state._client) ? state._client : (guild && guild.client ? guild.client : null);
+        const msgText = '❌ Голосовой канал недоступен. Убедитесь, что вы находитесь в голосовом канале.';
+        let updated = false;
+        if (clientForPanel) updated = await updateControlMessageWithError(guild.id, clientForPanel, msgText).catch(() => false);
+        if (!updated) await notifyOwner(guild.id, state, userId, msgText);
+        return false;
+      }
+      
+      // Проверяем права доступа бота на голосовой канал
+      if (!voiceChannel.permissionsFor(guild.members.me)?.has('Connect')) {
+        console.error('playNow: Bot does not have CONNECT permission in voice channel');
+        const clientForPanel = (state && state._client) ? state._client : (guild && guild.client ? guild.client : null);
+        const msgText = '❌ Бот не имеет доступа к голосовому каналу. Проверьте права доступа.';
+        let updated = false;
+        if (clientForPanel) updated = await updateControlMessageWithError(guild.id, clientForPanel, msgText).catch(() => false);
+        if (!updated) await notifyOwner(guild.id, state, userId, msgText);
+        return false;
+      }
+      
+      try {
+        connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+        state.connection = connection;
+      } catch (joinErr) {
+        console.error('playNow: joinVoiceChannel failed:', joinErr && joinErr.message);
+        const clientForPanel = (state && state._client) ? state._client : (guild && guild.client ? guild.client : null);
+        const msgText = `❌ Не удалось подключиться к голосовому каналу: ${joinErr && joinErr.message ? joinErr.message : 'неизвестная ошибка'}`;
+        let updated = false;
+        if (clientForPanel) updated = await updateControlMessageWithError(guild.id, clientForPanel, msgText).catch(() => false);
+        if (!updated) await notifyOwner(guild.id, state, userId, msgText);
+        return false;
+      }
+      
       try {
         // Wait for the underlying voice connection to become ready
         await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+
         console.log('playNow: Voice connection is Ready, guild', guild.id);
       } catch (e) {
         console.warn('playNow: connection not ready', e && e.message);
@@ -1288,6 +1323,25 @@ async function stop(guild) {
     state.connection = null;
     // clear progress updater
     try { if (state._progressInterval) { clearInterval(state._progressInterval); state._progressInterval = null; } } catch (e) {}
+    
+    // Возвращаемся в стандартный голосовой канал после остановки музыки
+    try {
+      const DEFAULT_VOICE_CHANNEL_ID = '1449757724274589829';
+      const voiceChannel = await guild.channels.fetch(DEFAULT_VOICE_CHANNEL_ID).catch(() => null);
+      if (voiceChannel && voiceChannel.isVoiceBased?.()) {
+        const connection = joinVoiceChannel({
+          channelId: DEFAULT_VOICE_CHANNEL_ID,
+          guildId: guild.id,
+          adapterCreator: guild.voiceAdapterCreator,
+          selfDeaf: false,
+          selfMute: false
+        });
+        await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
+        console.log('[VOICE] ✅ Бот вернулся в стандартный канал после остановки музыки');
+      }
+    } catch (e) {
+      console.warn('[VOICE] Не удалось вернуться в стандартный канал:', e && e.message);
+    }
     
     // Update control message with stop status
     const client = guild.client;

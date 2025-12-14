@@ -1423,6 +1423,37 @@ client.once('ready', async () => {
   } catch (e) {
     console.warn('Reviews initialization failed:', e.message);
   }
+
+  // Connect to default music voice channel on startup
+  try {
+    const { joinVoiceChannel, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
+    const DEFAULT_VOICE_CHANNEL_ID = '1449757724274589829';
+    const guild = await client.guilds.fetch('1446797048373207172').catch(() => null); // Main server guild ID
+    if (guild) {
+      const voiceChannel = await guild.channels.fetch(DEFAULT_VOICE_CHANNEL_ID).catch(() => null);
+      if (voiceChannel && voiceChannel.isVoiceBased?.()) {
+        try {
+          const connection = joinVoiceChannel({
+            channelId: DEFAULT_VOICE_CHANNEL_ID,
+            guildId: guild.id,
+            adapterCreator: guild.voiceAdapterCreator,
+            selfDeaf: false,
+            selfMute: false
+          });
+          await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+          console.log('[VOICE] ✅ Bot connected to default voice channel:', DEFAULT_VOICE_CHANNEL_ID);
+        } catch (e) {
+          console.warn('[VOICE] Failed to connect to default channel:', e && e.message);
+        }
+      } else {
+        console.warn('[VOICE] Default voice channel not found or not voice-based');
+      }
+    } else {
+      console.warn('[VOICE] Failed to fetch guild for default voice channel connection');
+    }
+  } catch (e) {
+    console.warn('[VOICE] Default voice channel initialization failed:', e.message);
+  }
   
   // Отправляем уведомление о готовности бота в канал логов
   try {
