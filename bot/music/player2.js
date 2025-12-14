@@ -25,7 +25,7 @@ const players = new Map();
 
 function ensureState(guildId) {
   if (!players.has(guildId)) {
-    const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
+    const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Continue } });
     
     // Add error and state change logging
     player.on('error', (error) => {
@@ -804,6 +804,7 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
 
     let resource = null;
     let resolvedUrl = null;
+    let resolvedTitle = null;
 
     // Handle findYouTubeUrl return types: it may return a string (direct URL) or an object { candidates: [...] }
     const candidates = [];
