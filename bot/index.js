@@ -486,6 +486,25 @@ client.on('interactionCreate', async (interaction) => {
         }
         return;
       }
+      // Reviews buttons
+      if (interaction.customId && interaction.customId.startsWith('review_')) {
+        try {
+          const reviewsCmd = client.commands.get('reviews');
+          if (reviewsCmd && reviewsCmd.handleButton) {
+            await reviewsCmd.handleButton(interaction);
+          }
+          // Handle review approval/rejection buttons
+          if (interaction.customId.startsWith('review_approve_') || interaction.customId.startsWith('review_reject_')) {
+            if (reviewsCmd && reviewsCmd.handleReviewButton) {
+              await reviewsCmd.handleReviewButton(interaction);
+            }
+          }
+        } catch (err) {
+          console.error('Reviews button error', err);
+          await safeReply(interaction, { content: '❌ Ошибка при обработке отзыва.', ephemeral: true });
+        }
+        return;
+      }
       return;
     }
     if (interaction.isStringSelectMenu && interaction.isStringSelectMenu()) {
@@ -633,6 +652,19 @@ client.on('interactionCreate', async (interaction) => {
           }
         } catch (err) {
           console.error('Settings/moderation modal error', err);
+          await safeReply(interaction, { content: '❌ Ошибка: ' + (err.message || err), ephemeral: true });
+        }
+        return;
+      }
+      // Reviews modal
+      if (interaction.customId && interaction.customId.startsWith('review_')) {
+        try {
+          const reviewsCmd = client.commands.get('reviews');
+          if (reviewsCmd && reviewsCmd.handleModal) {
+            await reviewsCmd.handleModal(interaction);
+          }
+        } catch (err) {
+          console.error('Reviews modal error', err);
           await safeReply(interaction, { content: '❌ Ошибка: ' + (err.message || err), ephemeral: true });
         }
         return;
@@ -1376,6 +1408,16 @@ client.once('ready', async () => {
     console.log('✅ Stats tracker initialized and cleaned up');
   } catch (e) {
     console.warn('Stats tracker init failed:', e.message);
+  }
+
+  // Connect to voice channel for reviews system
+  try {
+    const reviewsCommand = require('./commands/reviews');
+    if (reviewsCommand.connectToVoiceChannel) {
+      await reviewsCommand.connectToVoiceChannel(client);
+    }
+  } catch (e) {
+    console.warn('Reviews voice channel connection failed:', e.message);
   }
   
   // Отправляем уведомление о готовности бота в канал логов
