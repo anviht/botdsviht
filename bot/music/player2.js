@@ -739,8 +739,11 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
           connection.destroy();
           connection = null;
           state.connection = null;
+          // Получаем свежее соединение после destroy
+          connection = getVoiceConnection(guild.id);
         } catch (e) {
           console.warn('[playNow] Ошибка уничтожения старого соединения:', e?.message);
+          connection = null;
         }
       } else {
         console.log('[playNow] ✅ Уже в нужном канале');
@@ -751,8 +754,15 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
       console.log('playNow: Creating new voice connection for guild', guild.id);
       
       try {
-        connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+        connection = joinVoiceChannel({ 
+          channelId: voiceChannel.id, 
+          guildId: guild.id, 
+          adapterCreator: guild.voiceAdapterCreator,
+          selfDeaf: false,
+          selfMute: false
+        });
         state.connection = connection;
+        console.log('[playNow] ✅ Новое соединение создано');
       } catch (joinErr) {
         console.error('playNow: joinVoiceChannel failed:', joinErr && joinErr.message);
         const clientForPanel = (state && state._client) ? state._client : (guild && guild.client ? guild.client : null);
@@ -765,18 +775,19 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
       
       try {
         // Wait for the underlying voice connection to become ready
-        await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+        await entersState(connection, VoiceConnectionStatus.Ready, 15_000).catch((err) => {
+          console.warn('[playNow] entersState timed out или отменена:', err?.message);
+          // Ignore timeout - соединение всё равно может работать
+        });
 
         console.log('playNow: Voice connection is Ready, guild', guild.id);
       } catch (e) {
-        console.warn('playNow: connection not ready', e && e.message);
-        {
-          const clientForPanel = (state && state._client) ? state._client : (guild && guild.client ? guild.client : null);
-          const msgText = '❌ Ошибка подключения к голосовому каналу.';
-          let updated = false;
-          if (clientForPanel) updated = await updateControlMessageWithError(guild.id, clientForPanel, msgText).catch(() => false);
-          if (!updated) await notifyOwner(guild.id, state, userId, msgText);
-        }
+        console.warn('playNow: connection error', e && e.message);
+        const clientForPanel = (state && state._client) ? state._client : (guild && guild.client ? guild.client : null);
+        const msgText = '❌ Ошибка подключения к голосовому каналу.';
+        let updated = false;
+        if (clientForPanel) updated = await updateControlMessageWithError(guild.id, clientForPanel, msgText).catch(() => false);
+        if (!updated) await notifyOwner(guild.id, state, userId, msgText);
         return false;
       }
     } else {
