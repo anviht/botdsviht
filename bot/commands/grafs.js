@@ -122,11 +122,13 @@ function createStatsEmbed(data, title, emoji) {
   
   // Добавить ASCII график
   const asciiChart = createAsciiChart(data, 'График входов 👥');
-  embed.addFields({
-    name: '📈 График входов',
-    value: asciiChart,
-    inline: false
-  });
+  embed.addFields([
+    {
+      name: '📈 График входов',
+      value: asciiChart,
+      inline: false
+    }
+  ]);
   
   // Добавить роли если есть
   if (Object.keys(allRoles).length > 0) {
@@ -137,11 +139,13 @@ function createStatsEmbed(data, title, emoji) {
       .join('\n');
     
     if (rolesText) {
-      embed.addFields({
-        name: '👑 ТОП роли',
-        value: rolesText,
-        inline: false
-      });
+      embed.addFields([
+        {
+          name: '👑 ТОП роли',
+          value: rolesText,
+          inline: false
+        }
+      ]);
     }
   }
   
