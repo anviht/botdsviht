@@ -8,11 +8,13 @@ module.exports = {
 
   async execute(interaction) {
     const config = require('../config');
+    const MSTOP_ROLE_ID = '1436485697392607303'; // Роль которая может использовать /mstop
+    
     const member = interaction.member || (interaction.guild ? await interaction.guild.members.fetch(interaction.user.id).catch(()=>null) : null);
-    if (!member || !member.roles || !member.roles.cache || !config.adminRoles || !config.adminRoles.some(rid => member.roles.cache.has(rid))) {
+    if (!member || !member.roles || !member.roles.cache || !member.roles.cache.has(MSTOP_ROLE_ID)) {
       try {
-        if (interaction.replied || interaction.deferred) await interaction.followUp({ content: 'У вас нет права использовать эту команду.', ephemeral: true });
-        else await interaction.reply({ content: 'У вас нет права использовать эту команду.', ephemeral: true });
+        if (interaction.replied || interaction.deferred) await interaction.followUp({ content: 'У вас нет права использовать эту команду. Требуется специальная роль.', ephemeral: true });
+        else await interaction.reply({ content: 'У вас нет права использовать эту команду. Требуется специальная роль.', ephemeral: true });
       } catch (e) {
         try { await interaction.followUp({ content: 'У вас нет права использовать эту команду.', ephemeral: true }); } catch (ignore) {}
       }

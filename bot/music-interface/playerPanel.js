@@ -3,9 +3,44 @@ const db = require('../libs/db');
 const musicPlayer = require('../music/player2');
 
 const CONTROL_PANEL_CHANNEL_ID = '1443194196172476636';
+const DEFAULT_VOICE_CHANNEL_ID = '1449757724274589829'; // Войс отзывов куда возвращается бот
 
 // Store active player sessions: { userId -> { messageId, guildId, voiceChannelId, currentTrack, isPlaying } }
 const playerSessions = new Map();
+
+// Store activity timeouts: { userId -> timeoutId }
+const sessionTimeouts = new Map();
+
+/**
+ * Сбросить таймаут неактивности для пользователя (10 минут)
+ * Если 10 минут никто не нажимает кнопки - бот идёт в войс отзывов
+ */
+function resetActivityTimeout(userId, client) {
+  // Очищаем старый таймаут если есть
+  if (sessionTimeouts.has(userId)) {
+    clearTimeout(sessionTimeouts.get(userId));
+  }
+  
+  // Устанавливаем новый таймаут (10 минут = 600000 мс)
+  const timeout = setTimeout(async () => {
+    console.log(`[PLAYER-TIMEOUT] Неактивность пользователя ${userId}, возврат бота в войс отзывов`);
+    const session = playerSessions.get(userId);
+    if (session) {
+      try {
+        const guild = await client.guilds.fetch(session.guildId).catch(() => null);
+        if (guild) {
+          await musicPlayer.stop(guild).catch(() => null);
+          playerSessions.delete(userId);
+        }
+      } catch (e) {
+        console.warn('[PLAYER-TIMEOUT] Ошибка при остановке:', e.message);
+      }
+    }
+    sessionTimeouts.delete(userId);
+  }, 10 * 60 * 1000); // 10 минут
+  
+  sessionTimeouts.set(userId, timeout);
+}
 
 // Build initial "Занять плеер" embed and button
 function buildOccupyEmbed() {
@@ -191,6 +226,9 @@ async function handleOccupy(interaction, client) {
       messageId: interaction.message.id
     });
     
+    // Запускаем таймаут неактивности (10 минут)
+    resetActivityTimeout(userId, client);
+    
     // Update message with control buttons
     const embed = buildPlayingEmbed({ userId }, '⏳ Плеер готов к работе...');
     const row = buildControlRow(false);
@@ -203,7 +241,7 @@ async function handleOccupy(interaction, client) {
 }
 
 // Handle "Найти песню" button click - show modal
-async function handleFindSong(interaction) {
+async function handleFindSong(interaction, client) {
   try {
     const userId = interaction.user.id;
     const session = playerSessions.get(userId);
@@ -211,6 +249,9 @@ async function handleFindSong(interaction) {
     if (!session) {
       return await interaction.reply({ content: '❌ Плеер не занят. Нажмите "Занять плеер"', ephemeral: true }).catch(() => null);
     }
+    
+    // Сбросить таймаут неактивности
+    resetActivityTimeout(userId, client);
     
     const modal = new ModalBuilder()
       .setCustomId(`player_search_modal_${userId}`)
@@ -350,7 +391,7 @@ async function handleSearchModalSubmit(interaction, client) {
 }
 
 // Handle "Добавить следующую" button
-async function handleAddNext(interaction) {
+async function handleAddNext(interaction, client) {
   try {
     const userId = interaction.user.id;
     const session = playerSessions.get(userId);
@@ -358,6 +399,9 @@ async function handleAddNext(interaction) {
     if (!session) {
       return await interaction.reply({ content: '❌ Плеер не занят', ephemeral: true }).catch(() => null);
     }
+    
+    // Сбросить таймаут неактивности
+    resetActivityTimeout(userId, client);
     
     const modal = new ModalBuilder()
       .setCustomId(`player_queue_modal_${userId}`)
@@ -428,6 +472,12 @@ async function handleBack(interaction, client) {
     // Release player
     playerSessions.delete(userId);
     
+    // Очистить таймаут
+    if (sessionTimeouts.has(userId)) {
+      clearTimeout(sessionTimeouts.get(userId));
+      sessionTimeouts.delete(userId);
+    }
+    
     // Update message back to initial state
     const embed = buildOccupyEmbed();
     const row = buildOccupyRow();
@@ -445,10 +495,17 @@ async function handleSearchSelectMenu(interaction, client) {
     const customId = interaction.customId;
     const searchId = customId.replace('player_search_select_', '');
     const cache = global._playerSearchCache?.[searchId];
+    const interactionUserId = interaction.user.id;
     
     if (!cache) {
       console.warn('[PLAYER] Cache not found for searchId:', searchId);
       return await interaction.deferUpdate().catch(() => null);
+    }
+    
+    // ⚠️ ПРОВЕРКА ПРАВ: только владелец плеера может выбирать песни
+    if (cache.userId && cache.userId !== interactionUserId) {
+      console.warn(`[PLAYER] ❌ Попытка управления плеером от ${interactionUserId}, владелец ${cache.userId}`);
+      return await interaction.reply({ content: '❌ Только владелец плеера может выбирать песни!', ephemeral: true }).catch(() => null);
     }
     
     console.log('[PLAYER] 🎵 handleSearchSelectMenu - cache:', {
@@ -468,6 +525,9 @@ async function handleSearchSelectMenu(interaction, client) {
     
     const trackUrl = selectedTrack.url || selectedTrack.link;
     const trackTitle = selectedTrack.title || 'Unknown';
+    
+    // Сбросить таймаут неактивности
+    resetActivityTimeout(cache.userId, client);
     
     // Get guild and voice channel
     const guild = await client.guilds.fetch(cache.guildId).catch(() => null);
@@ -643,9 +703,9 @@ async function handlePlayerPanelButton(interaction, client) {
     if (customId === 'player_occupy') {
       await handleOccupy(interaction, client);
     } else if (customId === 'player_find_song') {
-      await handleFindSong(interaction);
+      await handleFindSong(interaction, client);
     } else if (customId === 'player_add_next') {
-      await handleAddNext(interaction);
+      await handleAddNext(interaction, client);
     } else if (customId === 'player_back') {
       await handleBack(interaction, client);
     } else if (customId === 'player_vk_music') {
