@@ -9,7 +9,7 @@ const ALLOWED_ROLE_ID = '1436485697392607303';
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('reviewssetup')
+    .setName('reviews')
     .setDescription('🔧 Установить панель отзывов (админ)'),
 
   async execute(interaction) {
@@ -72,8 +72,11 @@ module.exports = {
 module.exports.handleButton = async (interaction) => {
   if (!interaction.customId.startsWith('review_')) return;
 
+  console.log('[Reviews] Button handler called:', interaction.customId);
+  
   try {
     if (interaction.customId === 'review_leave') {
+      console.log('[Reviews] Opening review modal for user:', interaction.user.id);
       const modal = new ModalBuilder()
         .setCustomId('review_submit_modal')
         .setTitle('Оставить отзыв');
@@ -101,7 +104,9 @@ module.exports.handleButton = async (interaction) => {
         new ActionRowBuilder().addComponents(ratingInput)
       );
 
+      console.log('[Reviews] Showing modal...');
       await interaction.showModal(modal);
+      console.log('[Reviews] Modal shown successfully');
       return;
     }
 
