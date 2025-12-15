@@ -285,6 +285,35 @@ async function checkPointAchievements(userId, points, client) {
 }
 
 // ============================================
+// ФУНКЦИЯ УВЕДОМЛЕНИЙ ДЛЯ ВСЕХ ИГР
+// ============================================
+
+async function notifyReward(interaction, userId, reward, gameName, emoji) {
+  try {
+    if (reward === 0) return;
+    
+    // DM - красивое embed
+    const user = await interaction.client.users.fetch(userId).catch(() => null);
+    if (user) {
+      const embed = new EmbedBuilder()
+        .setTitle(`${emoji} Победа в ${gameName}!`)
+        .setDescription(`+${reward} очков`)
+        .setColor(0x00AA00)
+        .setThumbnail(user.displayAvatarURL());
+      await user.send({ embeds: [embed] }).catch(() => {});
+    }
+
+    // Flood channel - минимальное сообщение
+    const floodChannel = await interaction.client.channels.fetch('1448411376291938336').catch(() => null);
+    if (floodChannel) {
+      await floodChannel.send(`<@${userId}> ${emoji} +${reward} очков в ${gameName}`).catch(() => {});
+    }
+  } catch (e) {
+    console.warn('[NOTIFY] Error:', e && e.message ? e.message : e);
+  }
+}
+
+// ============================================
 // ЭКСПОРТ
 // ============================================
 
@@ -308,4 +337,7 @@ module.exports = {
   addAchievement,
   checkGameAchievements,
   checkPointAchievements,
+  
+  // Функция уведомлений
+  notifyReward,
 };

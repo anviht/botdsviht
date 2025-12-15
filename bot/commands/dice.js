@@ -30,7 +30,7 @@ module.exports = {
         await points.checkPointAchievements(userId, newPoints, interaction.client);
       } catch (e) {}
 
-      await notifyReward(interaction, userId, reward);
+      await points.notifyReward(interaction, userId, reward, points.GAME_REWARDS.dice.name, '🎲');
     } else {
       await points.recordGameLoss(userId, 'dice');
     }
@@ -47,25 +47,3 @@ module.exports = {
     await interaction.reply({ embeds: [embed] });
   }
 };
-
-async function notifyReward(interaction, userId, reward) {
-  try {
-    if (reward === 0) return;
-
-    const user = await interaction.client.users.fetch(userId).catch(() => null);
-    if (user) {
-      const embed = new EmbedBuilder()
-        .setTitle('🎲 Победа в Кубиках!')
-        .setDescription(`+${reward} очков`)
-        .setColor(0x00AA00)
-        .setThumbnail(user.displayAvatarURL());
-      
-      await user.send({ embeds: [embed] }).catch(() => {});
-    }
-
-    const floodChannel = await interaction.client.channels.fetch('1448411376291938336').catch(() => null);
-    if (floodChannel) {
-      await floodChannel.send(`<@${userId}> 🎲 +${reward} очков в Кубики`).catch(() => {});
-    }
-  } catch (e) {}
-}

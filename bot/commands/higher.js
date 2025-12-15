@@ -70,34 +70,11 @@ module.exports = {
 
     // Notify reward
     if (reward > 0) {
-      await notifyReward(interaction, userId, reward, 'Выше/Ниже', '📈');
+      await pointSystem.notifyReward(interaction, userId, reward, pointSystem.GAME_REWARDS.higher.name, '📈');
       
       // Check achievements
       await pointSystem.checkGameAchievements(userId, 'higher', interaction.client);
-      await pointSystem.checkPointAchievements(userId, interaction.client);
+      await pointSystem.checkPointAchievements(userId, reward, interaction.client);
     }
   }
 };
-
-async function notifyReward(interaction, userId, reward, gameName, emoji) {
-  try {
-    // DM notification
-    const user = await interaction.client.users.fetch(userId).catch(() => null);
-    if (user) {
-      const embed = new EmbedBuilder()
-        .setTitle(`${emoji} Победа в ${gameName}!`)
-        .setDescription(`+${reward} очков`)
-        .setColor(0x00AA00)
-        .setThumbnail(user.displayAvatarURL());
-      await user.send({ embeds: [embed] }).catch(() => {});
-    }
-
-    // Flood channel notification
-    const floodChannel = await interaction.client.channels.fetch('1448411376291938336').catch(() => null);
-    if (floodChannel) {
-      await floodChannel.send(`<@${userId}> ${emoji} +${reward} очков в ${gameName}`).catch(() => {});
-    }
-  } catch (e) {
-    console.warn('Notify reward error:', e && e.message ? e.message : e);
-  }
-}
