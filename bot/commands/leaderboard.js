@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const db = require('../libs/db');
 
 module.exports = {
@@ -31,24 +31,35 @@ module.exports = {
       });
     }
 
-    const embed = new EmbedBuilder()
-      .setTitle('🏆 Лидерборд очков')
-      .setColor(0xFFD700)
-      .setDescription('Топ-10 активных членов сообщества')
-      .setTimestamp();
+    // Получить информацию о пользователях
+    let leaderboardText = '🏆 **ЛИДЕРБОРД ОЧКОВ** 🏆\n';
+    leaderboardText += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
 
     let rank = 1;
     for (const user of top10) {
-      const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
-      embed.addFields({
-        name: `${medal} <@${user.userId}>`,
-        value: `⭐ **${user.points}** очков | 📊 **Уровень ${user.level}**`,
-        inline: false
-      });
+      const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#️⃣`;
+      const padding = rank < 10 ? ' ' : '';
+      
+      // Получить имя пользователя
+      let userName = `<@${user.userId}>`;
+      try {
+        const discordUser = await interaction.client.users.fetch(user.userId).catch(() => null);
+        if (discordUser) {
+          userName = `**${discordUser.username}**`;
+        }
+      } catch (e) {}
+      
+      leaderboardText += `${medal} ${padding}${rank}. ${userName}\n`;
+      leaderboardText += `   ⭐ ${user.points} очков | 📊 Уровень ${user.level}\n\n`;
       rank++;
     }
 
-    embed.setFooter({ text: 'Очки из игр, вех сообщений и достижений' });
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    leaderboardText += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+    leaderboardText += 'Очки из игр, вех сообщений и достижений';
+
+    await interaction.reply({
+      content: leaderboardText,
+      ephemeral: true
+    });
   }
 };
