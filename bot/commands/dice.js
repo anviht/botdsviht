@@ -26,7 +26,7 @@ module.exports = {
       const newPoints = await points.addPoints(userId, reward, 'dice_win');
       
       try {
-        await points.checkGameAchievements(userId, interaction.client);
+        await points.checkGameAchievements(userId, 'dice', interaction.client);
         await points.checkPointAchievements(userId, newPoints, interaction.client);
       } catch (e) {}
 

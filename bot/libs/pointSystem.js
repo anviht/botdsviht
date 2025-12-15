@@ -168,7 +168,7 @@ async function addMessage(userId, client) {
     
     const gameStats = db.get('gameStats') || {};
     if (!gameStats[userId]) {
-      gameStats[userId] = { points: 0, wins: 0, losses: 0, messagesCount: 0, gamesPlayed: {} };
+      gameStats[userId] = { points: 0, wins: 0, losses: 0, messagesCount: 0, gamesPlayed: {}, achievements: [] };
     }
     
     gameStats[userId].messagesCount = (gameStats[userId].messagesCount || 0) + 1;
@@ -176,18 +176,24 @@ async function addMessage(userId, client) {
     
     await db.set('gameStats', gameStats);
     
-    // Проверяем вехи
+    // Проверяем достижения за сообщения
+    await checkMessageAchievements(userId, msgCount, client);
+    
+    // Проверяем вехи и даём награды
     for (const milestone of MESSAGE_MILESTONES) {
       if (msgCount === milestone) {
         await addPoints(userId, MESSAGE_REWARD, `messages_${milestone}`);
-        
-        // Проверяем достижения
-        if (msgCount === 1000) await addAchievement(userId, 'messages_1000', client);
-        if (msgCount === 10000) await addAchievement(userId, 'messages_10000', client);
-        if (msgCount === 50000) await addAchievement(userId, 'messages_50000', client);
-        
         console.log(`[MESSAGES] Веха достигнута: ${msgCount} для ${userId}`);
         return milestone; // вернём какую веху достигли
+      }
+    }
+    
+    return null;
+    
+  } catch (e) {
+    console.error('[MESSAGES] Error:', e);
+  }
+}
       }
     }
     
@@ -208,13 +214,16 @@ async function addAchievement(userId, key, client) {
   try {
     await db.ensureReady();
     
-    const achievements = db.get('achievements') || {};
-    if (!achievements[userId]) achievements[userId] = [];
+    // Сохранять в gameStats, а не в отдельный achievements объект
+    const gameStats = db.get('gameStats') || {};
+    if (!gameStats[userId]) {
+      gameStats[userId] = { points: 0, wins: 0, losses: 0, messagesCount: 0, gamesPlayed: {}, achievements: [] };
+    }
     
-    if (achievements[userId].includes(key)) return false; // уже есть
+    if (gameStats[userId].achievements.includes(key)) return false; // уже есть
     
-    achievements[userId].push(key);
-    await db.set('achievements', achievements);
+    gameStats[userId].achievements.push(key);
+    await db.set('gameStats', gameStats);
     
     console.log(`[ACH] Новое достижение: ${key} для ${userId}`);
     
@@ -247,17 +256,26 @@ async function addAchievement(userId, key, client) {
 /**
  * Проверить достижения после игры
  */
-async function checkGameAchievements(userId, client) {
+async function checkGameAchievements(userId, game, client) {
   try {
     await db.ensureReady();
     
     const gameStats = db.get('gameStats') || {};
     const stats = gameStats[userId] || {};
     
+    // Первая игра
     if (stats.wins >= 1) await addAchievement(userId, 'first_game', client);
+    
+    // Достижения по количеству побед
     if (stats.wins >= 25) await addAchievement(userId, 'wins_25', client);
     if (stats.wins >= 100) await addAchievement(userId, 'wins_100', client);
     if (stats.wins >= 500) await addAchievement(userId, 'wins_500', client);
+    
+    // Проверить, сыграл ли во все игры
+    const gamesPlayed = Object.keys(stats.gamesPlayed || {});
+    if (gamesPlayed.length >= 6) {
+      await addAchievement(userId, 'play_all_games', client);
+    }
     
   } catch (e) {
     console.error('[ACH-GAME] Error:', e);
@@ -281,6 +299,32 @@ async function checkPointAchievements(userId, points, client) {
     
   } catch (e) {
     console.error('[ACH-POINTS] Error:', e);
+  }
+}
+
+/**
+ * Проверить достижения по сообщениям
+ */
+async function checkMessageAchievements(userId, messagesCount, client) {
+  try {
+    if (messagesCount >= 1) await addAchievement(userId, 'first_message', client);
+    if (messagesCount >= 1000) await addAchievement(userId, 'messages_1000', client);
+    if (messagesCount >= 10000) await addAchievement(userId, 'messages_10000', client);
+    if (messagesCount >= 50000) await addAchievement(userId, 'messages_50000', client);
+    
+  } catch (e) {
+    console.error('[ACH-MSG] Error:', e);
+  }
+}
+
+/**
+ * Проверить достижение за первую команду
+ */
+async function checkFirstCommand(userId, client) {
+  try {
+    await addAchievement(userId, 'first_command', client);
+  } catch (e) {
+    console.error('[ACH-CMD] Error:', e);
   }
 }
 
@@ -337,6 +381,8 @@ module.exports = {
   addAchievement,
   checkGameAchievements,
   checkPointAchievements,
+  checkMessageAchievements,
+  checkFirstCommand,
   
   // Функция уведомлений
   notifyReward,

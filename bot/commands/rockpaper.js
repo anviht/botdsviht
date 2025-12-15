@@ -52,6 +52,12 @@ module.exports = {
 
     if (result === 'win') {
       await pointSystem.recordGameWin(userId, 'rockpaper', earnedPoints);
+      const newPoints = await pointSystem.addPoints(userId, earnedPoints, 'rockpaper_win');
+      
+      try {
+        await pointSystem.checkGameAchievements(userId, 'rockpaper', interaction.client);
+        await pointSystem.checkPointAchievements(userId, newPoints, interaction.client);
+      } catch (e) {}
     } else if (result === 'loss') {
       await pointSystem.recordGameLoss(userId, 'rockpaper');
     }
@@ -78,10 +84,6 @@ module.exports = {
     // Notify reward
     if (earnedPoints > 0) {
       await pointSystem.notifyReward(interaction, userId, earnedPoints, pointSystem.GAME_REWARDS.rockpaper.name, '✂️');
-      
-      // Check achievements
-      await pointSystem.checkGameAchievements(userId, 'rockpaper', interaction.client);
-      await pointSystem.checkPointAchievements(userId, earnedPoints, interaction.client);
     }
   }
 };

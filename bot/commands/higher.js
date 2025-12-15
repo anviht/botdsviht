@@ -45,6 +45,12 @@ module.exports = {
     await db.ensureReady();
     if (result === 'win') {
       await pointSystem.recordGameWin(userId, 'higher', reward);
+      const newPoints = await pointSystem.addPoints(userId, reward, 'higher_win');
+      
+      try {
+        await pointSystem.checkGameAchievements(userId, 'higher', interaction.client);
+        await pointSystem.checkPointAchievements(userId, newPoints, interaction.client);
+      } catch (e) {}
     } else if (result === 'loss') {
       await pointSystem.recordGameLoss(userId, 'higher');
     }
@@ -71,10 +77,6 @@ module.exports = {
     // Notify reward
     if (reward > 0) {
       await pointSystem.notifyReward(interaction, userId, reward, pointSystem.GAME_REWARDS.higher.name, '📈');
-      
-      // Check achievements
-      await pointSystem.checkGameAchievements(userId, 'higher', interaction.client);
-      await pointSystem.checkPointAchievements(userId, reward, interaction.client);
     }
   }
 };

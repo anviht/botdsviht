@@ -29,6 +29,12 @@ module.exports = {
     await db.ensureReady();
     if (won) {
       await pointSystem.recordGameWin(userId, 'slots', reward);
+      const newPoints = await pointSystem.addPoints(userId, reward, 'slots_win');
+      
+      try {
+        await pointSystem.checkGameAchievements(userId, 'slots', interaction.client);
+        await pointSystem.checkPointAchievements(userId, newPoints, interaction.client);
+      } catch (e) {}
     } else {
       await pointSystem.recordGameLoss(userId, 'slots');
     }
@@ -45,10 +51,7 @@ module.exports = {
     // Notify reward
     if (won) {
       await pointSystem.notifyReward(interaction, userId, reward, pointSystem.GAME_REWARDS.slots.name, '🎰');
-      
-      // Check achievements
-      await pointSystem.checkGameAchievements(userId, 'slots', interaction.client);
-      await pointSystem.checkPointAchievements(userId, reward, interaction.client);
+
     }
   }
 };

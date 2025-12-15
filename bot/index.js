@@ -106,7 +106,10 @@ client.on('interactionCreate', async (interaction) => {
       }
       
       try {
-        try { await achievements.checkFirstCommand(interaction.user.id, interaction); } catch (e) { /* ignore achievement errors */ }
+        try {
+          const pointSystem = require('./libs/pointSystem');
+          await pointSystem.checkFirstCommand(interaction.user.id, interaction.client);
+        } catch (e) { console.warn('[ACH] checkFirstCommand error:', e.message); }
         await command.execute(interaction);
       } catch (err) { console.error('Command error', err); await safeReply(interaction, { content: 'Ошибка при выполнении команды.', ephemeral: true }); }
       return;
