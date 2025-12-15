@@ -3,12 +3,10 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 // Define all regular user commands with their descriptions
 const userCommands = [
   { name: 'profile', emoji: '👤', ru: 'Просмотр профиля и статистики', en: 'View profile and stats' },
-  { name: 'balance', emoji: '💰', ru: 'Проверить баланс', en: 'Check balance' },
   { name: 'daily', emoji: '📅', ru: 'Получить дневную награду', en: 'Get daily reward' },
   { name: 'stats', emoji: '📊', ru: 'Статистика сервера', en: 'Server statistics' },
   { name: 'leaderboard', emoji: '🏆', ru: 'Таблица лидеров', en: 'Leaderboard' },
   { name: 'achievements', emoji: '🎖️', ru: 'Ваши достижения', en: 'Your achievements' },
-  { name: 'transfer', emoji: '💸', ru: 'Передать валюту другому', en: 'Transfer currency' },
   { name: 'info', emoji: 'ℹ️', ru: 'Информация о сервере', en: 'Server information' },
   { name: 'viht', emoji: '🔑', ru: 'О сервисе Viht', en: 'About Viht service' },
   { name: 'vpn', emoji: '🌐', ru: 'Информация о VPN', en: 'VPN information' },
@@ -17,7 +15,10 @@ const userCommands = [
   { name: 'music', emoji: '🎵', ru: 'Управление музыкой', en: 'Music control' },
   { name: 'dice', emoji: '🎲', ru: 'Бросить кубик', en: 'Roll a dice' },
   { name: 'flip', emoji: '🪙', ru: 'Подбросить монету', en: 'Flip a coin' },
-  { name: 'roulette', emoji: '🎰', ru: 'Русская рулетка', en: 'Russian roulette' },
+  { name: 'roulette', emoji: '🎡', ru: 'Русская рулетка', en: 'Russian roulette' },
+  { name: 'rockpaper', emoji: '✂️', ru: 'Камень-Ножницы-Бумага', en: 'Rock-Paper-Scissors' },
+  { name: 'slots', emoji: '🎰', ru: 'Слоты', en: 'Slots' },
+  { name: 'higher', emoji: '📈', ru: 'Выше/Ниже', en: 'Higher/Lower' },
   { name: 'support', emoji: '🆘', ru: '⚠️ ТОЛЬКО ОСНОВАТЕЛЬ - Создать тикет', en: '⚠️ FOUNDER ONLY - Create ticket' },
   { name: 'ticket', emoji: '🎫', ru: '⚠️ ТОЛЬКО ОСНОВАТЕЛЬ - Статус тикета', en: '⚠️ FOUNDER ONLY - Ticket status' },
 ];
@@ -60,8 +61,8 @@ module.exports = {
 
     // Categorize commands
     const profileCmds = ['profile', 'stats', 'achievements'];
-    const economyCmds = ['balance', 'daily', 'leaderboard', 'transfer'];
-    const gameCmds = ['dice', 'flip', 'roulette'];
+    const economyCmds = ['daily', 'leaderboard'];
+    const gameCmds = ['dice', 'flip', 'roulette', 'rockpaper', 'slots', 'higher'];
     const infoCmds = ['info', 'viht', 'vpn', 'vers', 'remind'];
     const mediaCmds = ['music'];
     const restrictedCmds = ['support', 'ticket'];

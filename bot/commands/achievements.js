@@ -1,17 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../libs/db');
-
-const achievements = {
-  'first_command': { name: '🎯 Первый шаг', description: 'Использовать первую команду' },
-  'first_game': { name: '🎮 Геймер', description: 'Выиграть первую игру' },
-  'rep_100': { name: '⭐ Начинающий', description: 'Набрать 100 репутации' },
-  'rep_500': { name: '✨ Мастер', description: 'Набрать 500 репутации' },
-  'rep_1000': { name: '👑 Легенда', description: 'Набрать 1000 репутации' },
-  'wins_10': { name: '🏆 Десятикратный чемпион', description: 'Выиграть 10 игр' },
-  'wins_50': { name: '🥇 Чемпион сервера', description: 'Выиграть 50 игр' },
-  'daily_7': { name: '🔥 Верный друг', description: 'Получить награду 7 дней подряд' },
-  'daily_30': { name: '⚡ Супер верный друг', description: 'Получить награду 30 дней подряд' },
-};
+const pointSystem = require('../libs/pointSystem');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -24,25 +13,42 @@ module.exports = {
     const targetUser = interaction.options.getUser('user') || interaction.user;
     const userId = targetUser.id;
 
-    const userAchievements = db.get('achievements') || {};
-    const userAch = userAchievements[userId] || [];
+    const gameStats = db.get('gameStats') || {};
+    const userStats = gameStats[userId] || { achievements: [] };
+    const userAchievements = userStats.achievements || [];
 
+    const achievements = pointSystem.ACHIEVEMENTS;
+    
     const embed = new EmbedBuilder()
       .setTitle(`🏅 Достижения ${targetUser.username}`)
       .setColor(0xFFD700)
       .setThumbnail(targetUser.displayAvatarURL({ extension: 'png', size: 128 }))
-      .setDescription(`Получено достижений: **${userAch.length}/${Object.keys(achievements).length}**\n\n`);
+      .setDescription(`Получено достижений: **${userAchievements.length}/${Object.keys(achievements).length}**\n\n`);
 
-    for (const [key, ach] of Object.entries(achievements)) {
-      const unlocked = userAch.includes(key);
-      const status = unlocked ? '✅' : '🔒';
-      embed.addFields({
-        name: `${status} ${ach.name}`,
-        value: ach.description,
-        inline: false
-      });
+    // Group achievements by category
+    const categories = {
+      'Базовые': ['first_command', 'first_game', 'first_message'],
+      'Очки': ['points_500', 'points_2000', 'points_5000', 'points_10000', 'points_25000'],
+      'Победы': ['wins_25', 'wins_100', 'wins_500'],
+      'Сообщения': ['messages_1000', 'messages_10000', 'messages_50000'],
+      'Специальные': ['win_streak_10', 'play_all_games', 'level_50', 'level_100']
+    };
+
+    for (const [category, achievementIds] of Object.entries(categories)) {
+      let categoryText = `\n**${category}:**\n`;
+      for (const achievementId of achievementIds) {
+        const ach = achievements[achievementId];
+        if (!ach) continue;
+        const unlocked = userAchievements.includes(achievementId);
+        const status = unlocked ? '✅' : '🔒';
+        categoryText += `${status} **${ach.name}** - ${ach.description}\n`;
+      }
+      if (categoryText.trim().length > category.length + 5) {
+        embed.addFields({ name: '\u200b', value: categoryText, inline: false });
+      }
     }
 
+    embed.setFooter({ text: 'Разблокируй все достижения и станешь легендой!' });
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
 };

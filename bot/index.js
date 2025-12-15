@@ -1303,6 +1303,17 @@ client.on('messageCreate', async (message) => {
     if (message.author?.bot) return;
     if (!message.channel) return;
     
+    // ✨ Подсчёт сообщений для системы очков
+    try {
+      const pointSystem = require('./libs/pointSystem');
+      const milestone = await pointSystem.addMessage(message.author.id, client);
+      if (milestone) {
+        console.log(`[MESSAGES] Веха ${milestone} достигнута для ${message.author.id}`);
+      }
+    } catch (e) {
+      console.warn('Message count error:', e && e.message ? e.message : e);
+    }
+    
     // Post Manager message input
     try {
       const { handlePostMessageInput } = require('./post-manager/postManager');

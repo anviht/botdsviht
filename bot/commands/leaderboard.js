@@ -4,29 +4,25 @@ const db = require('../libs/db');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('leaderboard')
-    .setDescription('🏆 Топ-10 пользователей по репутации'),
+    .setDescription('🏆 Топ-10 пользователей по очкам'),
 
   async execute(interaction) {
     await db.ensureReady();
-    const tickets = db.get('tickets') || [];
-    const aiStats = db.get('stats') || { aiRequests: 0 };
+    const gameStats = db.get('gameStats') || {};
 
-    // Get all unique user IDs from tickets
-    const userIds = [...new Set(tickets.map(t => t.creatorId))];
-
-    // Calculate reputation for each user
-    const userReputation = [];
-    for (const userId of userIds) {
-      const userTickets = tickets.filter(t => t.creatorId === userId).length;
-      const reputation = (userTickets * 5) + (aiStats.aiRequests || 0) * 1;
-      if (reputation > 0) {
-        userReputation.push({ userId, reputation, tickets: userTickets });
+    // Get all users with points
+    const userScores = [];
+    for (const [userId, stats] of Object.entries(gameStats)) {
+      const points = stats.points || 0;
+      const level = Math.floor(points / 100) + 1;
+      if (points > 0) {
+        userScores.push({ userId, points, level });
       }
     }
 
-    // Sort by reputation
-    userReputation.sort((a, b) => b.reputation - a.reputation);
-    const top10 = userReputation.slice(0, 10);
+    // Sort by points
+    userScores.sort((a, b) => b.points - a.points);
+    const top10 = userScores.slice(0, 10);
 
     if (top10.length === 0) {
       return await interaction.reply({
@@ -36,7 +32,7 @@ module.exports = {
     }
 
     const embed = new EmbedBuilder()
-      .setTitle('🏆 Лидерборд репутации')
+      .setTitle('🏆 Лидерборд очков')
       .setColor(0xFFD700)
       .setDescription('Топ-10 активных членов сообщества')
       .setTimestamp();
@@ -46,13 +42,13 @@ module.exports = {
       const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
       embed.addFields({
         name: `${medal} <@${user.userId}>`,
-        value: `⭐ **${user.reputation}** репутация | 🎫 **${user.tickets}** тикетов`,
+        value: `⭐ **${user.points}** очков | 📊 **Уровень ${user.level}**`,
         inline: false
       });
       rank++;
     }
 
-    embed.setFooter({ text: 'Репутация = Тикеты×5 + AI запросы×1' });
+    embed.setFooter({ text: 'Очки из игр, вех сообщений и достижений' });
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
 };
