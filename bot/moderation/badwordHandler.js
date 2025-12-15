@@ -458,6 +458,7 @@ async function checkMessage(message, client) {
         if (word.length === 0) continue;
         
         // 1. Прямое совпадение (слово === матерное слово)
+        // Это основной и самый надёжный способ - слово полностью совпадает с матом
         if (word === cleanedBadword || transliteratedWord === cleanedBadword) {
           if (!foundBadwords.includes(badword)) {
             foundBadwords.push(badword);
@@ -466,39 +467,28 @@ async function checkMessage(message, client) {
           break;
         }
         
-        // 2. Слово содержит матерное слово (для слов без пробелов)
-        // НО: для коротких badwords (< 4 букв), требуем только exact match, чтобы избежать false positives
-        // Потому что "бля", "ля", "ня" и т.д. часто встречаются в нормальных словах (употребляй, полная, и т.д.)
-        if (cleanedBadword.length >= 4) {
+        // 2. Слово содержит матерное слово (для слов без пробелов типа обхода типа "вотэтоничего")
+        // НО: требуем что слово минимум в 2 раза больше badword, чтобы это не был просто случайный match
+        // И требуем badword минимум 5 букв (очень длинное матерное слово)
+        // Это очень строгие условия - практически исключает false positives
+        if (cleanedBadword.length >= 5 && word.length >= cleanedBadword.length * 2) {
           if (word.includes(cleanedBadword) || transliteratedWord.includes(cleanedBadword)) {
             if (!foundBadwords.includes(badword)) {
               foundBadwords.push(badword);
-              console.log(`[BADWORD] ✓ CONTAINS: "${badword}" in word "${word}"`);
+              console.log(`[BADWORD] ✓ CONTAINS: "${badword}" (len=${cleanedBadword.length}) in word "${word}" (len=${word.length})`);
             }
             break;
           }
         }
         
-        // 3. Матерное слово содержит слово (для частичных совпадений)
-        // НО: только если badword длинный И слово достаточно длинное (минимум 3 буквы)
-        if ((cleanedBadword.includes(word) || cleanedBadword.includes(transliteratedWord)) && word.length >= 4 && cleanedBadword.length >= 5) {
-          if (!foundBadwords.includes(badword)) {
-            foundBadwords.push(badword);
-            console.log(`[BADWORD] ✓ PARTIAL: word "${word}" is part of badword "${badword}"`);
-          }
-          break;
-        }
+        // 3. Матерное слово содержит слово - УДАЛЕНО
+        // Это слишком часто вызывает false positives, поэтому убираем эту проверку
       }
       
-      // Также проверяем в целом тексте без разделения на слова
-      // Это нужно для текстов без пробелов типа "Вотэтонихуясебе"
-      // НО: для коротких badwords требуем их длину >= 4, чтобы избежать false positives в нормальных словах
-      if (cleanedBadword.length >= 4) {
-        if ((normalizedContent.includes(cleanedBadword) || transliteratedContent.includes(cleanedBadword)) && !foundBadwords.includes(badword)) {
-          foundBadwords.push(badword);
-          console.log(`[BADWORD] ✓ IN TEXT: "${badword}" found in normalized content`);
-        }
-      }
+      // Проверка в целом тексте БЕЗ разделения на слова - УДАЛЕНА
+      // Это вызывает false positives, поэтому полностью убираем
+      // Если человек пишет слова слитно без пробелов - пусть пройдёт,
+      // главное чтобы чёткие маты ловились
     }
 
     if (foundBadwords.length === 0) return;
