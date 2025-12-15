@@ -12,10 +12,8 @@ const execAsync = promisify(exec);
 // Try loading optional libraries
 let spotifyUri = null;
 let soundcloudScraper = null;
-let ytdl = null;
 let playdl = null;
 
-try { ytdl = require('ytdl-core'); } catch (e) {}
 try { playdl = require('play-dl'); } catch (e) {}
 try { spotifyUri = require('spotify-uri'); } catch (e) {}
 try { soundcloudScraper = require('soundcloud-scraper'); } catch (e) {}

@@ -1,5 +1,4 @@
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, NoSubscriberBehavior, AudioPlayerStatus, getVoiceConnection, entersState, VoiceConnectionStatus, StreamType } = require('@discordjs/voice');
-const ytdl = require('ytdl-core');
 const yts = require('yt-search');
 let playdl = null;
 try { playdl = require('play-dl'); } catch (e) { playdl = null; }
@@ -465,7 +464,7 @@ function isYouTubeUrl(url) {
 async function streamFromUrl(url) {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30 sec timeout for network requests
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
       'Accept': '*/*',
@@ -524,8 +523,8 @@ async function streamFromUrl(url) {
 async function getStreamFromYtDlp(url) {
   return new Promise((resolve) => {
     const cmd = `${YTDLP_BIN} -f "bestaudio" -g "${url.replace(/"/g, '\\"')}" 2>&1`;
-    // Increase exec timeout to allow yt-dlp more time on slower systems
-    exec(cmd, { timeout: 60000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+    // Increase exec timeout to allow yt-dlp more time on slower systems and network issues (90 sec)
+    exec(cmd, { timeout: 90000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
         if (err || !stdout || stdout.includes('ERROR')) {
           console.warn('yt-dlp failed:', err && err.message, 'stdout:', (stdout||'').slice(0,200), 'stderr:', (stderr||'').slice(0,400));
           resolve(null);
@@ -567,6 +566,25 @@ async function getStreamFromYtDlpPipe(url, state) {
 
       // pipe yt stdout into ffmpeg stdin
       yt.stdout.pipe(ff.stdin);
+      
+      // Обработка ошибок потоков для предотвращения EPIPE
+      yt.stdout.on('error', (e) => {
+        console.warn('yt-dlp stdout error:', e?.message);
+        try { yt.kill(); } catch (er) {}
+        try { ff.kill(); } catch (er) {}
+      });
+      
+      ff.stdin.on('error', (e) => {
+        console.warn('ffmpeg stdin error (EPIPE):', e?.message);
+        try { yt.kill(); } catch (er) {}
+        try { ff.kill(); } catch (er) {}
+      });
+      
+      ff.stdout.on('error', (e) => {
+        console.warn('ffmpeg stdout error:', e?.message);
+        try { yt.kill(); } catch (er) {}
+        try { ff.kill(); } catch (er) {}
+      });
 
       // watch stderr for hints
       ff.stderr.on('data', (d) => { console.log('yt-dlp->ffmpeg stderr:', String(d).slice(0,200)); });
@@ -604,13 +622,13 @@ async function getStreamFromYtDlpPipe(url, state) {
       yt.on('close', fail);
       ff.on('close', fail);
 
-      // fallback timeout — give more time for yt-dlp+ffmpeg to negotiate streams
+      // fallback timeout — give more time for yt-dlp+ffmpeg to negotiate streams (30 sec for slow networks)
       setTimeout(() => {
         if (!started) {
           console.warn('getStreamFromYtDlpPipe: timeout waiting for stream', url.substring(0,80));
           fail();
         }
-      }, 15000);
+      }, 30000);
     } catch (e) {
       console.warn('getStreamFromYtDlpPipe error', e && e.message);
       resolve(null);
@@ -912,121 +930,29 @@ async function playNow(guild, voiceChannel, queryOrUrl, textChannel, userId, pla
         // Before starting candidate attempts, ensure previous procs/streams are cleaned
         try { _killStateProcs(state); } catch (e) { /* ignore */ }
 
-        // 2) Fallback: ytdl-core with safe wrapper
-        // Before trying ytdl-core, try an aggressive yt-dlp -> ffmpeg pipe fallback
+        // 2) Fallback: yt-dlp -> ffmpeg pipe (without deprecated ytdl-core)
         if (!resource) {
           try {
-            console.log('Attempting yt-dlp -> ffmpeg pipe early for', candidateUrl.substring(0,80));
-                const pipeStreamEarly = await getStreamFromYtDlpPipe(candidateUrl, state).catch(() => null);
-            if (pipeStreamEarly) {
+            console.log('Attempting yt-dlp -> ffmpeg pipe for', candidateUrl.substring(0,80));
+            const pipeStream = await getStreamFromYtDlpPipe(candidateUrl, state).catch(() => null);
+            if (pipeStream) {
               try {
-                resource = createAudioResource(pipeStreamEarly, { inputType: StreamType.Raw, inlineVolume: true });
+                resource = createAudioResource(pipeStream, { inputType: StreamType.Raw, inlineVolume: true });
                 resolvedUrl = candidateUrl;
-                detail.attempts.push({ method: 'yt-dlp-pipe-early', ok: true });
+                detail.attempts.push({ method: 'yt-dlp-pipe', ok: true });
                 attemptDetails.push(detail);
-                console.log('✅ yt-dlp pipe (early) SUCCESS for', candidateUrl.substring(0,80));
+                console.log('✅ yt-dlp pipe SUCCESS for', candidateUrl.substring(0,80));
               } catch (e) {
-                console.warn('yt-dlp pipe (early) createAudioResource failed:', e && e.message);
-                try { if (pipeStreamEarly && typeof pipeStreamEarly.destroy === 'function') pipeStreamEarly.destroy(); } catch (ee) {}
+                console.warn('yt-dlp pipe createAudioResource failed:', e && e.message);
+                try { if (pipeStream && typeof pipeStream.destroy === 'function') pipeStream.destroy(); } catch (ee) {}
               }
             } else {
-              detail.attempts.push({ method: 'yt-dlp-pipe-early', ok: false, error: 'no pipe stream' });
-            }
-          } catch (e) {
-            detail.attempts.push({ method: 'yt-dlp-pipe-early', ok: false, error: String(e && e.message || e).slice(0,100) });
-          }
-        }
-
-        // Wrap in Promise to catch async errors from stream reading
-        if (!resource) {
-          try {
-            console.log('Attempting ytdl-core for', (candidateTitle || candidateUrl).substring(0, 80));
-            
-            // Create stream safely with error handling
-            let stream = null;
-            let streamError = null;
-            
-            // Try different quality options
-            const qualityOptions = [
-              { filter: 'audioonly', quality: 'highestaudio' },
-              { filter: 'audioonly', quality: 'lowestaudio' },
-              { filter: 'audio' }
-            ];
-            
-            for (const opts of qualityOptions) {
-                try {
-                // First attempt to fetch video info to ensure signature extraction works
-                try {
-                  await ytdl.getInfo(candidateUrl);
-                } catch (infoErr) {
-                  console.warn('ytdl-core getInfo failed, skipping candidate:', String(infoErr && infoErr.message || infoErr).slice(0,200));
-                  stream = null;
-                  continue; // try next quality option or candidate
-                }
-                // Use better options for ytdl-core to avoid YouTube blocking
-                const ytdlOpts = {
-                  ...opts,
-                  highWaterMark: 1 << 25,
-                  requestOptions: {
-                    headers: {
-                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    }
-                  }
-                };
-                
-                stream = ytdl(candidateUrl, ytdlOpts);
-                
-                if (stream) {
-                  // Wrap raw ytdl stream into a PassThrough so we can handle async stream errors
-                  const pass = new PassThrough();
-
-                  // Attach error handler BEFORE piping to pass-through
-                  stream.on('error', (err) => {
-                    streamError = err;
-                    console.warn('ytdl stream async error:', String(err && err.message || err).slice(0, 200));
-                    try { pass.destroy(err); } catch (e) { /* ignore */ }
-                    // Stop the player gracefully if something goes wrong after play started
-                    try { if (state && state.player) state.player.stop(); } catch (e) { /* ignore */ }
-                  });
-
-                  // Also handle unexpected end/close on the underlying stream
-                  stream.on('close', () => {
-                    console.log('ytdl stream closed for', candidateUrl.substring(0, 80));
-                  });
-
-                  // Pipe into pass-through and create resource from pass
-                  stream.pipe(pass);
-
-                  try {
-                    resource = createAudioResource(pass, { inlineVolume: true });
-                    resolvedUrl = candidateUrl;
-                    resolvedTitle = candidateTitle;
-                    detail.attempts.push({ method: 'ytdl-core', ok: true });
-                    attemptDetails.push(detail);
-                    console.log('✅ ytdl-core SUCCESS for', candidateUrl.substring(0, 80));
-                    break;
-                  } catch (e) {
-                    console.warn('ytdl-core createAudioResource failed:', String(e && e.message || e).slice(0, 200));
-                    try { pass.destroy(); } catch (ee) { /* ignore */ }
-                    stream = null;
-                    // Try next quality option
-                    continue;
-                  }
-                }
-              } catch (e) {
-                console.warn(`ytdl-core quality=${opts.quality} failed:`, String(e && e.message || e).slice(0, 100));
-                stream = null;
-                continue;
-              }
-            }
-            
-            if (!resource && !stream) {
-              detail.attempts.push({ method: 'ytdl-core', ok: false, error: 'all quality options failed' });
+              detail.attempts.push({ method: 'yt-dlp-pipe', ok: false, error: 'no pipe stream' });
             }
           } catch (e) {
             const errMsg = String(e && e.message || e).slice(0, 100);
-            detail.attempts.push({ method: 'ytdl-core', ok: false, error: errMsg });
-            console.warn('ytdl-core outer catch:', candidateUrl.substring(0, 80), errMsg);
+            detail.attempts.push({ method: 'yt-dlp-pipe', ok: false, error: errMsg });
+            console.warn('yt-dlp pipe error:', candidateUrl.substring(0, 80), errMsg);
           }
         }
 

@@ -1212,6 +1212,22 @@ client.on('messageDelete', async (message) => {
     const guild = message.guild;
     const channel = message.channel;
     const author = message.author;
+    
+    // Проверяем если это сообщение отзыва - обновляем счетчик
+    const REVIEWS_VOICE_CHANNEL_ID = '1449757724274589829'; // Канал "Отзывы"
+    if (channel.id === REVIEWS_VOICE_CHANNEL_ID || (channel.parentId && channel.parentId === REVIEWS_VOICE_CHANNEL_ID)) {
+      try {
+        const reviewsCmd = client.commands.get('reviews');
+        if (reviewsCmd && reviewsCmd.handleReviewDeleted) {
+          await reviewsCmd.handleReviewDeleted(message, guild, client).catch(err => {
+            console.warn('[Reviews] Error updating reviews count on delete:', err?.message);
+          });
+        }
+      } catch (err) {
+        console.warn('[Reviews] Failed to update reviews:', err?.message);
+      }
+    }
+    
     // If the author was a bot, skip logging
     if (author && author.bot) return;
 

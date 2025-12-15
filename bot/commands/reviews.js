@@ -470,3 +470,47 @@ module.exports.ensureReviewsPanel = async (client) => {
     console.error('[Reviews] Error ensuring reviews panel:', error);
   }
 };
+// Обработчик удаления сообщения отзыва - обновляет счетчик
+module.exports.handleReviewDeleted = async (message, guild, client) => {
+  try {
+    // Проверяем что это сообщение от бота (отзыв)
+    if (!message.author || !message.author.bot) {
+      return; // Игнорируем сообщения от пользователей
+    }
+    
+    // Проверяем что это embed отзыва
+    if (!message.embeds || message.embeds.length === 0) {
+      return; // Игнорируем сообщения без embeds
+    }
+    
+    const embed = message.embeds[0];
+    if (!embed.title || !embed.title.includes('Отзыв')) {
+      return; // Не отзыв
+    }
+    
+    console.log('[Reviews] 🗑️ Отзыв удалён, пересчитываем количество');
+    
+    // Пересчитываем количество одобренных отзывов
+    await db.ensureReady();
+    const allReviews = db.get('reviews') || { approved: [] };
+    const reviewCount = (allReviews.approved || []).length;
+    
+    // Обновляем название канала
+    const voiceChannel = await client.channels.fetch(VOICE_CHANNEL_ID).catch(() => null);
+    if (voiceChannel && voiceChannel.isVoiceBased?.()) {
+      const newName = `🤝 Отзывы  - ${reviewCount}`;
+      
+      if (voiceChannel.name !== newName) {
+        try {
+          await voiceChannel.setName(newName);
+          console.log(`[Reviews] ✅ Обновлено название канала на: ${newName}`);
+        } catch (err) {
+          console.warn('[Reviews] Ошибка при обновлении названия:', err?.message);
+        }
+      }
+    }
+    
+  } catch (error) {
+    console.error('[Reviews] Error handling review deletion:', error);
+  }
+};

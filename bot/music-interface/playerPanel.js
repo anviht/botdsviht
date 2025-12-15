@@ -453,7 +453,7 @@ async function handleQueueModalSubmit(interaction, client) {
   }
 }
 
-// Handle "Назад" button - stop and release player
+// Handle "Назад" button - stop and release player, then reconnect to reviews channel
 async function handleBack(interaction, client) {
   try {
     const userId = interaction.user.id;
@@ -476,6 +476,25 @@ async function handleBack(interaction, client) {
     if (sessionTimeouts.has(userId)) {
       clearTimeout(sessionTimeouts.get(userId));
       sessionTimeouts.delete(userId);
+    }
+    
+    // Переподключить бота в канал отзывов (DEFAULT_VOICE_CHANNEL_ID)
+    try {
+      const { joinVoiceChannel } = require('@discordjs/voice');
+      const reviewsChannel = await guild.channels.fetch(DEFAULT_VOICE_CHANNEL_ID).catch(() => null);
+      
+      if (reviewsChannel && reviewsChannel.isVoiceBased && reviewsChannel.isVoiceBased()) {
+        joinVoiceChannel({
+          channelId: DEFAULT_VOICE_CHANNEL_ID,
+          guildId: guild.id,
+          adapterCreator: guild.voiceAdapterCreator,
+          selfDeaf: true,
+          selfMute: true
+        });
+        console.log(`[PLAYER-BACK] ✅ Бот вернулся в канал отзывов после остановки музыки`);
+      }
+    } catch (err) {
+      console.warn('[PLAYER-BACK] Ошибка при переподключении в канал отзывов:', err?.message);
     }
     
     // Update message back to initial state
