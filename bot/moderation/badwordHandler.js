@@ -420,6 +420,11 @@ async function checkMessage(message, client) {
     if (message.author?.bot) return;
     if (!message.content || message.content.length === 0) return;
 
+    // Пропускаем сообщения от администраторов и модераторов
+    if (message.member?.permissions.has('Administrator') || message.member?.permissions.has('ModerateMembers')) {
+      return;
+    }
+
     const content = message.content;
     console.log(`[BADWORD-CHECK] Проверка сообщения: "${content.slice(0, 50)}"`);
     const foundBadwords = [];
