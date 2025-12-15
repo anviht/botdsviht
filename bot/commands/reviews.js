@@ -488,12 +488,17 @@ module.exports.handleReviewDeleted = async (message, guild, client) => {
       return; // Не отзыв
     }
     
-    console.log('[Reviews] 🗑️ Отзыв удалён, пересчитываем количество');
+    console.log('[Reviews] 🗑️ Отзыв удалён, обновляем счётчик');
     
-    // Пересчитываем количество одобренных отзывов
+    // Получаем текущее количество одобренных отзывов
     await db.ensureReady();
     const allReviews = db.get('reviews') || { approved: [] };
-    const reviewCount = (allReviews.approved || []).length;
+    let reviewCount = (allReviews.approved || []).length;
+    
+    // ВАЖНО: вычитаем 1, потому что отзыв ЕЩЕ в БД, но его удаляют из канала
+    reviewCount = Math.max(0, reviewCount - 1);
+    
+    console.log(`[Reviews] Новое количество отзывов: ${reviewCount}`);
     
     // Обновляем название канала
     const voiceChannel = await client.channels.fetch(VOICE_CHANNEL_ID).catch(() => null);
@@ -512,5 +517,40 @@ module.exports.handleReviewDeleted = async (message, guild, client) => {
     
   } catch (error) {
     console.error('[Reviews] Error handling review deletion:', error);
+  }
+};
+
+// Функция для пересчёта и сброса счётчика отзывов (для админов)
+module.exports.recountReviews = async (client) => {
+  try {
+    console.log('[Reviews] 🔄 Пересчёт количества отзывов...');
+    
+    await db.ensureReady();
+    const allReviews = db.get('reviews') || { approved: [] };
+    const reviewCount = (allReviews.approved || []).length;
+    
+    console.log(`[Reviews] Всего одобренных отзывов: ${reviewCount}`);
+    
+    // Обновляем название канала
+    const voiceChannel = await client.channels.fetch(VOICE_CHANNEL_ID).catch(() => null);
+    if (!voiceChannel) {
+      console.error('[Reviews] Voice channel not found');
+      return false;
+    }
+    
+    const newName = `🤝 Отзывы  - ${reviewCount}`;
+    
+    try {
+      await voiceChannel.setName(newName);
+      console.log(`[Reviews] ✅ Пересчёт завершён! Новое название: ${newName}`);
+      return true;
+    } catch (err) {
+      console.error('[Reviews] Ошибка при обновлении названия:', err?.message);
+      return false;
+    }
+    
+  } catch (error) {
+    console.error('[Reviews] Error in recountReviews:', error);
+    return false;
   }
 };
