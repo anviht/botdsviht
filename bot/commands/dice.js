@@ -12,6 +12,14 @@ module.exports = {
     .setDescription('🎲 Кубики - выигрыш до 30 очков'),
 
   async execute(interaction) {
+    // Проверка канала
+    if (!points.isGameChannelOnly(interaction)) {
+      return await interaction.reply({
+        content: '❌ Игры доступны только в игровом канале <#1450486721878954006>',
+        ephemeral: true
+      });
+    }
+
     await db.ensureReady();
     const userId = interaction.user.id;
 

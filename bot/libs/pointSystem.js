@@ -328,14 +328,24 @@ async function notifyReward(interaction, userId, reward, gameName, emoji) {
   try {
     if (reward === 0) return;
     
-    // Flood channel - минимальное сообщение
-    const floodChannel = await interaction.client.channels.fetch('1448411376291938336').catch(() => null);
-    if (floodChannel) {
-      await floodChannel.send(`<@${userId}> ${emoji} +${reward} очков в ${gameName}`).catch(() => {});
-    }
+    // Уведомления отключены
+    console.log(`[GAME] +${reward} очков для ${userId} в ${gameName}`);
   } catch (e) {
     console.warn('[NOTIFY] Error:', e && e.message ? e.message : e);
   }
+}
+
+// ============================================
+// ПРОВЕРКА КАНАЛА ДЛЯ ИГР
+// ============================================
+
+const GAME_CHANNEL_ID = '1450486721878954006';
+
+function isGameChannelOnly(interaction) {
+  if (interaction.channelId !== GAME_CHANNEL_ID) {
+    return false;
+  }
+  return true;
 }
 
 // ============================================
@@ -367,4 +377,7 @@ module.exports = {
   
   // Функция уведомлений
   notifyReward,
+  
+  // Проверка канала
+  isGameChannelOnly,
 };

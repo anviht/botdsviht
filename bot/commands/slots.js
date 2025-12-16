@@ -14,6 +14,14 @@ module.exports = {
     .setDescription('🎰 Крути барабаны в слотах'),
 
   async execute(interaction) {
+    // Проверка канала
+    if (!pointSystem.isGameChannelOnly(interaction)) {
+      return await interaction.reply({
+        content: '❌ Игры доступны только в игровом канале <#1450486721878954006>',
+        ephemeral: true
+      });
+    }
+
     const userId = interaction.user.id;
 
     // Spin three reels
@@ -51,7 +59,6 @@ module.exports = {
     // Notify reward
     if (won) {
       await pointSystem.notifyReward(interaction, userId, reward, pointSystem.GAME_REWARDS.slots.name, '🎰');
-
     }
   }
 };

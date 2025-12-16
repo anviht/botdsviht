@@ -22,6 +22,14 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    // Проверка канала
+    if (!pointSystem.isGameChannelOnly(interaction)) {
+      return await interaction.reply({
+        content: '❌ Игры доступны только в игровом канале <#1450486721878954006>',
+        ephemeral: true
+      });
+    }
+
     const userId = interaction.user.id;
     const choice = interaction.options.getString('выбор');
 
