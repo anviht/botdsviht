@@ -647,201 +647,6 @@ client.on('interactionCreate', async (interaction) => {
           return;
         } catch (e) { console.error('music_modal_queue submit error', e); return await safeReply(interaction, { content: 'Ошибка при обработке формы музыки.', ephemeral: true }); }
       }
-      // Custom music search modal: find and play
-      if (interaction.customId === 'music_search_modal') {
-        try {
-          // Defer immediately to avoid timeout
-          await interaction.deferReply({ ephemeral: false }); // Show publicly so users can see the search
-          
-          const songName = interaction.fields.getTextInputValue('song_name').slice(0, 200);
-          const guild = interaction.guild;
-          const member = interaction.member || (guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null);
-          const voiceChannel = member && member.voice ? member.voice.channel : null;
-          if (!voiceChannel) {
-            await interaction.editReply({ content: '❌ Вы не в голосовом канале.', ephemeral: true });
-            return;
-          }
-          // Show searching message
-          await interaction.editReply({ content: `🔎 Ищу песню: **"${songName}"**\nПожалуйста, подождите...`, ephemeral: false });
-          
-          let searchResults = null;
-          
-          // Search on YouTube
-          try {
-            console.log(`[Music] Searching for: "${songName}"`);
-            searchResults = await musicPlayer.findYouTubeUrl(songName).catch(() => null);
-            if (searchResults && searchResults.candidates) {
-              searchResults.source = 'youtube';
-              console.log(`[Music Search] Found ${searchResults.candidates.length} YouTube results for "${songName}"`);
-            } else {
-              console.log(`[Music Search] No results found for "${songName}"`);
-            }
-          } catch (e) {
-            console.error('[Music Search] YouTube search failed:', e.message);
-          }
-          
-          if (!searchResults || !searchResults.candidates || searchResults.candidates.length === 0) {
-            console.warn(`[Music] No candidates found for "${songName}"`);
-            try { await interaction.editReply({ content: `❌ Не найдено вариантов для "${songName}". Попробуйте другой поиск.`, ephemeral: true }); } catch (e) {}
-            try { await interaction.followUp({ content: `❌ Не найдено вариантов для "${songName}". Попробуйте другой поиск.`, ephemeral: true }); } catch (e2) {}
-            return;
-          }
-          
-          const candidates = searchResults.candidates.slice(0, 10); // limit to 10 options
-          const searchId = `search_${Date.now()}_${interaction.user.id}`;
-          
-          console.log(`[Music] Building components for ${candidates.length} candidates`);
-          
-          // Create select menu or buttons for choosing
-          let components = [];
-          
-          try {
-            // ALWAYS prefer select menu for better UX
-            const { StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
-            const select = new StringSelectMenuBuilder()
-              .setCustomId(`music_search_select_${searchId}`)
-              .setPlaceholder('Выберите трек для воспроизведения')
-              .setMinValues(1)
-              .setMaxValues(Math.min(candidates.length, 5)); // Allow multi-select up to 5
-            
-            let optionsAdded = 0;
-            for (let i = 0; i < candidates.length && optionsAdded < 25; i++) {
-              const c = candidates[i];
-              const label = (c.title || c.url || '').slice(0, 95);
-              const desc = `Вариант ${i+1}/${candidates.length}`;
-              
-              if (label.length === 0) continue; // Skip empty labels
-              
-              select.addOptions(
-                new StringSelectMenuOptionBuilder()
-                  .setLabel(label)
-                  .setValue(`${i}`)
-                  .setDescription(desc)
-              );
-              optionsAdded++;
-            }
-            
-            if (optionsAdded > 0) {
-              components.push(new ActionRowBuilder().addComponents(select));
-              console.log(`[Music] Created select menu with ${optionsAdded} options`);
-            } else {
-              console.warn(`[Music] Failed to create select menu - no valid options`);
-            }
-          } catch (selectError) {
-            console.error('[Music] Select menu creation failed:', selectError.message);
-          }
-          
-          // If select menu failed, create button fallback
-          if (components.length === 0) {
-            console.log('[Music] Creating button fallback...');
-            const buttons = [];
-            for (let i = 0; i < Math.min(candidates.length, 10); i++) {
-              const emoji = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'][i];
-              const label = `${i+1}. ${(candidates[i].title || candidates[i].url || '').slice(0, 15)}...`;
-              buttons.push(new ButtonBuilder()
-                .setCustomId(`music_search_btn_${searchId}_${i}`)
-                .setLabel(label.slice(0, 80))
-                .setStyle(ButtonStyle.Success)
-              );
-            }
-            for (let i = 0; i < buttons.length; i += 5) {
-              components.push(new ActionRowBuilder().addComponents(buttons.slice(i, i + 5)));
-            }
-            console.log(`[Music] Created button fallback with ${components.length} rows`);
-          }
-          
-          // Store candidates temporarily (in memory, with timeout cleanup)
-          if (!global._musicSearchCache) global._musicSearchCache = {};
-          global._musicSearchCache[searchId] = { candidates, guildId: guild.id, voiceChannelId: voiceChannel.id, userId: interaction.user.id, timestamp: Date.now(), source: searchResults.source };
-          setTimeout(() => { delete global._musicSearchCache[searchId]; }, 120000); // Clear after 120s
-          
-          console.log(`[Music] Final components count: ${components.length}, components ready to send`);
-          
-          if (components.length === 0) {
-            console.error('[Music] CRITICAL: No components created! Creating emergency fallback buttons...');
-            const buttons = [];
-            for (let i = 0; i < Math.min(candidates.length, 5); i++) {
-              buttons.push(new ButtonBuilder()
-                .setCustomId(`music_search_btn_${searchId}_${i}`)
-                .setLabel(`${i+1}. Вариант`)
-                .setStyle(ButtonStyle.Danger)
-              );
-            }
-            if (buttons.length > 0) {
-              components.push(new ActionRowBuilder().addComponents(buttons));
-            }
-          }
-          
-          // Show results with detailed info
-          const resultEmbed = new EmbedBuilder()
-            .setTitle(`🎵 Результаты поиска`)
-            .setColor(0x00FF00)
-            .setDescription(`Найдено ${candidates.length} трек(а) по запросу: **${songName}**\n\n✅ **ВЫБЕРИТЕ ТРЕК из меню ниже:**`);
-          
-          // Show all candidates in fields
-          const fields = candidates.slice(0, 10).map((c, i) => ({
-            name: `${i+1}️⃣ ${(c.title || c.url || '').slice(0, 60)}`,
-            value: `Выберите номер ${i+1}`,
-            inline: false
-          }));
-          resultEmbed.addFields(fields);
-          
-          try { 
-            console.log(`[Music] SENDING MESSAGE with ${components.length} components for "${songName}"`);
-            const msg = await interaction.editReply({ embeds: [resultEmbed], components, ephemeral: false }); 
-            console.log(`[Music] ✅ Message sent successfully!`);
-          } catch (e) { 
-            console.error('❌ editReply failed:', e.message); 
-            try { 
-              console.log('[Music] Trying followUp as fallback...');
-              await interaction.followUp({ embeds: [resultEmbed], components, ephemeral: false }); 
-              console.log('[Music] ✅ followUp sent successfully');
-            } catch (e2) { 
-              console.error('❌ followUp also failed:', e2.message); 
-            }
-          }
-          return;
-        } catch (e) { 
-          console.error('music_search modal submit error', e); 
-          try { await interaction.editReply({ content: 'Ошибка при поиске песни.', ephemeral: true }); } catch (e2) { console.warn('editReply failed', e2); }
-        }
-      }
-      // Custom music queue modal: add to queue
-      if (interaction.customId === 'music_queue_modal') {
-        try {
-          const songName = interaction.fields.getTextInputValue('song_name_queue').slice(0, 200);
-          const guild = interaction.guild;
-          const ok = await musicPlayer.addToQueue(guild, songName);
-          if (ok) {
-            await safeReply(interaction, { content: `✅ "${songName}" добавлена в очередь`, ephemeral: true });
-          } else {
-            await safeReply(interaction, { content: 'Не удалось найти и добавить песню.', ephemeral: true });
-          }
-          return;
-        } catch (e) { console.error('music_queue_modal submit error', e); return await safeReply(interaction, { content: 'Ошибка при добавлении в очередь.', ephemeral: true }); }
-      }
-      // Player panel modals (search and queue)
-      if (interaction.customId && (interaction.customId.startsWith('player_search_modal_') || interaction.customId.startsWith('player_queue_modal_'))) {
-        try { await handlePlayerPanelModal(interaction, client); } catch (err) { console.error('Player panel modal error', err); await safeReply(interaction, { content: 'Ошибка при обработке формы.', ephemeral: true }); }
-        return;
-      }
-      // Post announcement modals
-      if (interaction.customId && interaction.customId.startsWith('post_modal_')) {
-        try {
-          const postCommand = require('./commands/post');
-          if (postCommand.handleModal) {
-            await postCommand.handleModal(interaction);
-          }
-        } catch (err) { 
-          console.error('[POST] Ошибка модали:', err.message); 
-          try {
-            await safeReply(interaction, { content: '❌ Ошибка: ' + (err.message || err), ephemeral: true });
-          } catch (replyErr) {
-            console.error('[POST] Не удалось отправить ошибку:', replyErr.message);
-          }
-        }
-        return;
-      }
       // Post Manager modals
       if (interaction.customId && (interaction.customId.startsWith('post_') || interaction.customId.startsWith('pm_'))) {
         try {
@@ -1437,27 +1242,6 @@ client.once('ready', async () => {
       await ch.send({ embeds: [embed] }).catch(() => null);
     }
   } catch (e) { console.warn('Failed to send bot ready notification:', e && e.message); }
-  
-  // Post Viht player v.4214 panel to control channel
-  try {
-    console.log('[PLAYER] Starting postPlayerMessage...');
-    const result = await postPlayerMessage(client);
-    console.log('[PLAYER] postPlayerMessage result:', result ? 'SUCCESS' : 'FAILED');
-  } catch (e) {
-    console.error('[PLAYER] Exception in postPlayerMessage:', e.message, e.stack);
-  }
-  
-  // Schedule periodic player panel refresh (every 5 minutes)
-  try {
-    setInterval(async () => {
-      try {
-        console.log('[PLAYER] Refreshing player panel...');
-        await postPlayerMessage(client);
-      } catch (e) {
-        console.warn('[PLAYER] Periodic refresh failed:', e.message);
-      }
-    }, 5 * 60 * 1000);
-  } catch (e) {
     console.warn('[PLAYER] Failed to schedule periodic refresh:', e.message);
   }
   
@@ -1756,12 +1540,14 @@ client.once('ready', async () => {
       }
     }
   } catch (e) { console.warn('Failed to post price panel on ready:', e && e.message ? e.message : e); }
-  // Post Music panel with Jockie Music controls
+  
+  // Post Music panel with YouTube search
   try {
-    const { postMusicPanel } = require('./menus/musicPanel');
-    await postMusicPanel(client);
-    setInterval(async () => { try { await postMusicPanel(client); } catch (e) { /* ignore */ } }, 5 * 60 * 1000);
+    const { updateMusicPanel } = require('./music/musicHandlers');
+    await updateMusicPanel(client);
+    setInterval(async () => { try { await updateMusicPanel(client); } catch (e) { /* ignore */ } }, 5 * 60 * 1000);
   } catch (e) { console.warn('Failed to post music panel on ready:', e && e.message ? e.message : e); }
+  
   // Post Post Manager panel
   try {
     await postPostManagerPanel(client);

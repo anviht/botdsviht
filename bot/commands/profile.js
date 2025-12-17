@@ -1,7 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('../libs/db');
 const chatHistory = require('../ai/chatHistory');
-const musicPlayer = require('../music/player2');
 
 module.exports = {
   data: new SlashCommandBuilder()
