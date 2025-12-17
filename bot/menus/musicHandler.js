@@ -138,8 +138,8 @@ module.exports = {
           return;
         }
 
-        // Отправляем команду Jockie Music с Spotify режимом
-        const command = `m!play --source spotify ${songName}`;
+        // Отправляем команду Jockie Music
+        const command = `m!play ${songName}`;
         await interaction.channel.send(command);
 
         // Сохраняем в БД что музыка играет
