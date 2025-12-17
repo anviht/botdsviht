@@ -23,8 +23,11 @@ module.exports = {
     const config = require('../config');
     const sub = interaction.options.getSubcommand();
 
-    const isAdmin = config.adminRoles.some(rid => interaction.member.roles.cache.has(rid));
-    if (!isAdmin) {
+    // Только роль 1436485697392607303 может использовать эту команду
+    const ALLOWED_ROLE_ID = '1436485697392607303';
+    const hasRole = interaction.member.roles.cache.has(ALLOWED_ROLE_ID);
+    
+    if (!hasRole) {
       return await interaction.reply({ content: '❌ Только администраторы могут это делать.', ephemeral: true });
     }
 
