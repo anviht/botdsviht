@@ -6,21 +6,28 @@ const MUSIC_PANEL_CHANNEL = '1443194196172476636';
 
 async function updateMusicPanel(client) {
   try {
-    const channel = await client.channels.fetch(MUSIC_PANEL_CHANNEL).catch(() => null);
+    console.log('[MUSIC] updateMusicPanel called');
+    const channel = await client.channels.fetch(MUSIC_PANEL_CHANNEL).catch((e) => {
+      console.error('[MUSIC] Failed to fetch channel:', e.message);
+      return null;
+    });
+    
     if (!channel) {
-      console.warn('[MUSIC] Channel not found:', MUSIC_PANEL_CHANNEL);
+      console.error('[MUSIC] Channel not found or not accessible:', MUSIC_PANEL_CHANNEL);
       return;
     }
+    
+    console.log('[MUSIC] Channel fetched:', channel.name || channel.id);
 
     const embed = new EmbedBuilder()
-      .setTitle(' Музыкальный плеер')
+      .setTitle('🎵 Музыкальный плеер')
       .setDescription('YouTube поиск')
       .setColor(0x1DB954)
       .addFields(
-        { name: ' Поиск', value: 'Найти и включить песню', inline: true },
-        { name: ' Следующая', value: 'Пропустить текущий трек', inline: true },
-        { name: ' Стоп', value: 'Остановить плеер', inline: true },
-        { name: ' Очередь', value: 'Показать список', inline: true }
+        { name: '🔍 Поиск', value: 'Найти и включить песню', inline: true },
+        { name: '⏭️ Следующая', value: 'Пропустить текущий трек', inline: true },
+        { name: '⏹️ Стоп', value: 'Остановить плеер', inline: true },
+        { name: '📋 Очередь', value: 'Показать список', inline: true }
       )
       .setFooter({ text: 'Управление музыкой' })
       .setTimestamp();
@@ -29,17 +36,17 @@ async function updateMusicPanel(client) {
       new ButtonBuilder()
         .setCustomId('music_search')
         .setLabel('Поиск')
-        .setEmoji('')
+        .setEmoji('🔍')
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('music_skip')
         .setLabel('Следующая')
-        .setEmoji('')
+        .setEmoji('⏭️')
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('music_stop')
         .setLabel('Стоп')
-        .setEmoji('')
+        .setEmoji('⏹️')
         .setStyle(ButtonStyle.Danger)
     );
 
@@ -47,25 +54,35 @@ async function updateMusicPanel(client) {
       new ButtonBuilder()
         .setCustomId('music_queue')
         .setLabel('Очередь')
-        .setEmoji('')
+        .setEmoji('📋')
         .setStyle(ButtonStyle.Secondary)
     );
 
     await db.ensureReady();
     const panelRecord = db.get('musicPanel');
+    
+    console.log('[MUSIC] Panel record from DB:', panelRecord ? `Found messageId: ${panelRecord.messageId}` : 'Not found');
 
     if (panelRecord?.messageId) {
       try {
+        console.log('[MUSIC] Trying to fetch existing message:', panelRecord.messageId);
         const msg = await channel.messages.fetch(panelRecord.messageId);
+        console.log('[MUSIC] Existing message found, editing...');
         await msg.edit({ embeds: [embed], components: [row1, row2] });
+        console.log('[MUSIC] ✅ Panel updated successfully');
         return;
-      } catch (e) {}
+      } catch (e) { 
+        console.warn('[MUSIC] Failed to fetch/edit existing message:', e.message);
+      }
     }
 
+    console.log('[MUSIC] Creating new panel message...');
     const msg = await channel.send({ embeds: [embed], components: [row1, row2] });
     db.set('musicPanel', { messageId: msg.id, channelId: MUSIC_PANEL_CHANNEL });
+    console.log('[MUSIC] ✅ Panel posted successfully, messageId:', msg.id);
   } catch (e) {
-    console.error('[PLAYER] Failed to update panel:', e);
+    console.error('[MUSIC] Failed to update panel:', e.message);
+    console.error('[MUSIC] Stack:', e?.stack);
   }
 }
 

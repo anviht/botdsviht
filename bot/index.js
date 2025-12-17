@@ -1199,14 +1199,8 @@ client.once('ready', async () => {
     console.warn('Reviews initialization failed:', e.message);
   }
 
-  // Инициализируем музыкальную панель
-  try {
-    const { updateMusicPanel } = require('./music/musicHandlers');
-    await updateMusicPanel(client);
-    console.log('✅ Music panel initialized');
-  } catch (e) {
-    console.warn('[MUSIC] Failed to initialize panel:', e.message);
-  }
+  // Инициализируем музыкальную панель - будет инициализирована позже вместе с другими панелями
+  // (see line 1568 in Post Music panel section)
 
   // Connect to default music voice channel on startup
   try {
@@ -1566,9 +1560,20 @@ client.once('ready', async () => {
   // Post Music panel with YouTube search
   try {
     const { updateMusicPanel } = require('./music/musicHandlers');
+    console.log('[MUSIC] Initializing music panel...');
     await updateMusicPanel(client);
-    setInterval(async () => { try { await updateMusicPanel(client); } catch (e) { /* ignore */ } }, 5 * 60 * 1000);
-  } catch (e) { console.warn('Failed to post music panel on ready:', e && e.message ? e.message : e); }
+    console.log('[MUSIC] ✅ Music panel posted successfully');
+    setInterval(async () => { 
+      try { 
+        await updateMusicPanel(client); 
+      } catch (e) { 
+        console.error('[MUSIC] Error in periodic refresh:', e.message);
+      } 
+    }, 5 * 60 * 1000);
+  } catch (e) { 
+    console.error('[MUSIC] Failed to post music panel on ready:', e && e.message ? e.message : e);
+    console.error('[MUSIC] Stack:', e?.stack);
+  }
   
   // Post Post Manager panel
   try {
