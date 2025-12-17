@@ -6,6 +6,8 @@ const MUSIC_PANEL_KEY = 'musicPanelPosted';
 
 async function postMusicPanel(client) {
   try {
+    await db.ensureReady();
+    
     const channel = await client.channels.fetch(MUSIC_PANEL_CHANNEL_ID).catch(() => null);
     if (!channel || !channel.isTextBased?.()) {
       console.warn('[MUSIC PANEL] Channel not found:', MUSIC_PANEL_CHANNEL_ID);
