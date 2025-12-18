@@ -212,6 +212,11 @@ async function addAchievement(userId, key, client) {
       gameStats[userId] = { points: 0, wins: 0, losses: 0, messagesCount: 0, gamesPlayed: {}, achievements: [] };
     }
     
+    // Защита от undefined achievements
+    if (!gameStats[userId].achievements) {
+      gameStats[userId].achievements = [];
+    }
+    
     if (gameStats[userId].achievements.includes(key)) return false; // уже есть
     
     gameStats[userId].achievements.push(key);

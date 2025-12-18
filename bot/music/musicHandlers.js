@@ -115,7 +115,7 @@ async function handleMusicSearchSubmit(interaction) {
     const results = await playerManager.search(query);
     
     if (results.length === 0) {
-      interaction.editReply(' Песни не найдены');
+      interaction.editReply('❌ Песни не найдены');
       return;
     }
 
@@ -123,47 +123,49 @@ async function handleMusicSearchSubmit(interaction) {
       .setCustomId('music_select')
       .setPlaceholder('Выберите песню')
       .addOptions(results.slice(0, 25).map((song, i) => ({
-        label: `${ i + 1}. ${song.title.substring(0, 80)}`,
-        value: JSON.stringify(song),
-        description: song.channel?.substring(0, 100) || 'YouTube'
+        label: `${i + 1}. ${song.title.substring(0, 80)}`,
+        value: String(i),
+        description: (song.author || song.channel || 'YouTube').substring(0, 100)
       })));
 
     const row = new ActionRowBuilder().addComponents(select);
     interaction.editReply({ 
-      content: ' Результаты поиска:',
+      content: '🔍 Результаты поиска:',
       components: [row]
     });
 
     db.set(`searchResults_${interaction.user.id}`, { results, expires: Date.now() + 300000 });
   } catch (e) {
     console.error('[MUSIC] Search error:', e);
-    interaction.editReply(' Ошибка поиска');
+    interaction.editReply('❌ Ошибка поиска');
   }
 }
 
 async function handleMusicSelect(interaction) {
   if (interaction.customId !== 'music_select') return;
 
-  const selectedValue = interaction.values[0];
-  let song;
-
-  try {
-    song = JSON.parse(selectedValue);
-  } catch (e) {
-    interaction.reply({ content: ' Ошибка выбора', ephemeral: true });
+  const selectedIndex = parseInt(interaction.values[0]);
+  
+  // Получаем сохранённые результаты поиска
+  const searchData = db.get(`searchResults_${interaction.user.id}`);
+  
+  if (!searchData || !searchData.results || selectedIndex >= searchData.results.length) {
+    interaction.reply({ content: '❌ Результаты поиска истекли. Попробуйте снова.', ephemeral: true });
     return;
   }
 
+  const song = searchData.results[selectedIndex];
+  
   const voiceChannel = interaction.member?.voice?.channel;
   if (!voiceChannel) {
-    interaction.reply({ content: ' Вы не в голосовом канале', ephemeral: true });
+    interaction.reply({ content: '❌ Вы не в голосовом канале', ephemeral: true });
     return;
   }
 
   playerManager.addToQueue(interaction.guildId, song);
   
   await interaction.deferReply({ ephemeral: true });
-  interaction.editReply(` **${song.title}** добавлено в очередь`);
+  interaction.editReply(`✅ **${song.title}** добавлено в очередь`);
 
   try {
     await updateMusicPanel(interaction.client);
