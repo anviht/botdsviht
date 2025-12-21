@@ -39,7 +39,7 @@ const STICKER_PRESETS = [
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('post')
+    .setName('пост')
     .setDescription('📝 Постить запись в выбранный канал')
     .addChannelOption(option =>
       option

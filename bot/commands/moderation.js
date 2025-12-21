@@ -8,7 +8,7 @@ const BADWORDS_FILE = path.join(__dirname, '../moderation/badwords.json');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('moderation')
+    .setName('модерация')
     .setDescription('🚫 Панель модерации (автомод, фильтры, запретные слова)'),
 
   async execute(interaction) {

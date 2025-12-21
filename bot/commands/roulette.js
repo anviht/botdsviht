@@ -8,7 +8,7 @@ function randInt(min, max) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('roulette')
+    .setName('рулетка')
     .setDescription('🎡 Рулетка - выигрыш до 150 очков (17% шанс)'),
 
   async execute(interaction) {

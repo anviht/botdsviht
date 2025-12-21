@@ -3,7 +3,7 @@ const db = require('../libs/db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('unmute')
+    .setName('унмут')
     .setDescription('🔊 [АДМИН] Снять мут с пользователя')
     .addUserOption(opt => opt.setName('user').setDescription('Пользователь').setRequired(true)),
 

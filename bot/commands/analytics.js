@@ -3,7 +3,7 @@ const db = require('../libs/db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('analytics')
+    .setName('аналитика')
     .setDescription('📊 [АДМИН] Просмотреть статистику сервера')
     .addStringOption(opt => opt
       .setName('type')

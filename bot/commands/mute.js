@@ -3,7 +3,7 @@ const db = require('../libs/db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('mute')
+    .setName('мут')
     .setDescription('🔇 [АДМИН] Замутить пользователя')
     .addUserOption(opt => opt.setName('user').setDescription('Пользователь').setRequired(true))
     .addIntegerOption(opt => opt.setName('duration').setDescription('Длительность в минутах').setMinValue(1).setRequired(true))

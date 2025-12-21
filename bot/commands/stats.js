@@ -3,7 +3,7 @@ const db = require('../libs/db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('stats')
+    .setName('статистика')
     .setDescription('📊 Просмотр расширенной статистики игрока')
     .addUserOption(opt => opt.setName('user').setDescription('Пользователь (по умолчанию вы)').setRequired(false)),
 

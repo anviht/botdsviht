@@ -3,7 +3,7 @@ const db = require('../libs/db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('daily')
+    .setName('бонус')
     .setDescription('🎁 Получить ежедневный бонус репутации (1 раз в 24 часа)'),
 
   async execute(interaction) {

@@ -2,7 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('per')
+    .setName('написатьотбота')
     .setDescription('Отправить личное сообщение указанному пользователю')
     .addUserOption(opt => opt.setName('user').setDescription('Кому отправить').setRequired(true))
     .addStringOption(opt => opt.setName('text').setDescription('Текст сообщения').setRequired(true)),

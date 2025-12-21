@@ -3,7 +3,7 @@ const db = require('../libs/db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('unwarn')
+    .setName('унварн')
     .setDescription('✅ [АДМИН] Снять варны у пользователя (по индексу или все)')
     .addUserOption(opt => opt.setName('user').setDescription('Пользователь').setRequired(true))
     .addIntegerOption(opt => opt.setName('index').setDescription('Номер варна (1 - самый первый). Оставьте пустым, чтобы удалить все').setRequired(false)),

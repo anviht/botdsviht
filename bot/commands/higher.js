@@ -8,7 +8,7 @@ function randInt(min, max) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('higher')
+    .setName('угадайчисло')
     .setDescription('📈 Угадай выше или ниже')
     .addStringOption(option =>
       option

@@ -3,7 +3,7 @@ const db = require('../libs/db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('leaderboard')
+    .setName('лидеры')
     .setDescription('🏆 Топ-10 пользователей по очкам'),
 
   async execute(interaction) {

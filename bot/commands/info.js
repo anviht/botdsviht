@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('info')
+    .setName('инфо')
     .setDescription('ℹ️ Информация о пользователе (ваша или указанного пользователя)')
     .addUserOption(opt => opt.setName('user').setDescription('Пользователь для отображения информации').setRequired(false)),
 

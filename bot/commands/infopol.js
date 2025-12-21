@@ -3,7 +3,7 @@ const db = require('../libs/db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('infopol')
+    .setName('нарушения')
     .setDescription('📊 Информация о пользователе (нарушения, мут, варны)')
     .addUserOption(opt => opt.setName('user').setDescription('Пользователь').setRequired(false)),
 

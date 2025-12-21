@@ -3,7 +3,7 @@ const { sendPrompt } = require('../ai/vihtAi');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('viht')
+    .setName('вихт')
     .setDescription('🔑 Информация о сервисе Viht и его возможностях')
     .addStringOption(option =>
       option.setName('prompt')

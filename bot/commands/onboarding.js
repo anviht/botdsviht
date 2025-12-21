@@ -3,8 +3,8 @@ const db = require('../libs/db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('onboarding')
-    .setDescription('📨 Управление приветственными DM сообщениями (только администраторы)')
+    .setName('новичек')
+    .setDescription('📨 Управление приветственными DM сообщениями (только администраторы)') 
     .addStringOption(opt => opt.setName('action').setDescription('optin|optout|status').setRequired(true)),
 
   async execute(interaction) {

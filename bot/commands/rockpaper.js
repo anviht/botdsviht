@@ -10,7 +10,7 @@ const CHOICES = {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('rockpaper')
+    .setName('каманэ')
     .setDescription('✂️ Играй в Камень-Ножницы-Бумага')
     .addStringOption(option =>
       option

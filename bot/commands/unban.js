@@ -3,7 +3,7 @@ const db = require('../libs/db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('unban')
+    .setName('унбан')
     .setDescription('✅ [АДМИН] Разбанить пользователя')
     .addUserOption(opt => opt.setName('user').setDescription('Пользователь (если нельзя выбрать, используйте ID через текст)').setRequired(true)),
 

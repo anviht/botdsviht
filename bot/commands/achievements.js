@@ -4,7 +4,7 @@ const pointSystem = require('../libs/pointSystem');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('achievements')
+    .setName('достижения')
     .setDescription('🏅 Просмотр ваших достижений')
     .addUserOption(opt => opt.setName('user').setDescription('Пользователь (по умолчанию вы)').setRequired(false)),
 
