@@ -20,16 +20,16 @@ module.exports = {
     const idx = interaction.options.getInteger('index');
     const targetId = targetUser.id;
 
-    const warnings = db.get('warnings') || {};
-    if (!warnings[targetId] || warnings[targetId].length === 0) {
+    const userViolations = db.get('userViolations') || {};
+    if (!userViolations[targetId] || userViolations[targetId].length === 0) {
       return await interaction.reply({ content: 'ℹ️ У пользователя нет варнов.', ephemeral: true });
     }
 
     if (idx) {
       const i = idx - 1;
-      if (i < 0 || i >= warnings[targetId].length) return await interaction.reply({ content: '❌ Неверный индекс варна.', ephemeral: true });
-      const removed = warnings[targetId].splice(i, 1)[0];
-      await db.set('warnings', warnings);
+      if (i < 0 || i >= userViolations[targetId].length) return await interaction.reply({ content: '❌ Неверный индекс варна.', ephemeral: true });
+      const removed = userViolations[targetId].splice(i, 1)[0];
+      await db.set('userViolations', userViolations);
 
       const embed = new EmbedBuilder()
         .setColor('#4CAF50')
@@ -44,8 +44,8 @@ module.exports = {
     }
 
     // Удалить все
-    delete warnings[targetId];
-    await db.set('warnings', warnings);
+    delete userViolations[targetId];
+    await db.set('userViolations', userViolations);
 
     const embed = new EmbedBuilder()
       .setColor('#4CAF50')

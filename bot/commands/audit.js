@@ -29,7 +29,7 @@ module.exports = {
     const type = interaction.options.getString('type') || 'all';
     const filterUser = interaction.options.getUser('user');
 
-    const warnings = db.get('warnings') || {};
+    const userViolations = db.get('userViolations') || {};
     const mutes = db.get('mutes') || {};
     const bans = db.get('bans') || {};
 
@@ -37,15 +37,16 @@ module.exports = {
 
     // Собрать варны
     if (type === 'warns' || type === 'all') {
-      for (const [userId, userWarnings] of Object.entries(warnings)) {
+      for (const [userId, userViolationsList] of Object.entries(userViolations)) {
         if (filterUser && userId !== filterUser.id) continue;
-        userWarnings.forEach(w => {
+        userViolationsList.forEach(v => {
+          if (v.type !== 'warn') return; // только варны, не другие нарушения
           entries.push({
             type: 'Варн',
             user: userId,
-            admin: w.adminId,
-            reason: w.reason,
-            timestamp: w.timestamp,
+            admin: v.adminId,
+            reason: v.reason,
+            timestamp: v.timestamp,
             color: '#FF6B6B'
           });
         });

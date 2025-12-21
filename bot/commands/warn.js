@@ -27,18 +27,18 @@ module.exports = {
       return await interaction.reply({ content: '❌ Вы не можете выдать варн самому себе.', ephemeral: true });
     }
 
-    // Сохранить варн в БД
-    const warnings = db.get('warnings') || {};
-    if (!warnings[targetId]) warnings[targetId] = [];
-    warnings[targetId].push({
-      adminId,
+    // Сохранить варн в БД (единый ключ userViolations)
+    const userViolations = db.get('userViolations') || {};
+    if (!userViolations[targetId]) userViolations[targetId] = [];
+    userViolations[targetId].push({
+      type: 'warn',
       reason,
       timestamp: new Date().toISOString(),
-      active: true
+      adminId
     });
-    await db.set('warnings', warnings);
+    await db.set('userViolations', userViolations);
 
-    const warnCount = warnings[targetId].length;
+    const warnCount = userViolations[targetId].length;
 
     const embed = new EmbedBuilder()
       .setColor('#FF6B6B')
@@ -72,7 +72,8 @@ module.exports = {
         .addFields(
           { name: 'Сервер', value: interaction.guild.name, inline: false },
           { name: 'Причина', value: reason, inline: false },
-          { name: 'Ваше количество варнов', value: `**${warnCount}**`, inline: true }
+          { name: 'Ваше количество варнов', value: `**${warnCount}** / 3`, inline: true },
+          { name: '⚠️ Внимание', value: 'При достижении 3 варнов за 30 дней вас заснует на 24 часа!', inline: false }
         )
         .setTimestamp();
       await targetUser.send({ embeds: [dmEmbed] });
