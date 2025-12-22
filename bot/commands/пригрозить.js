@@ -37,12 +37,6 @@ module.exports = {
       });
     }
 
-    const embed = new EmbedBuilder()
-      .setColor('#000000')
-      .setTitle('☠️ Угроза!')
-      .setDescription(`${interaction.user} **пригрозил** ${target}`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ content: `${interaction.user} **пригрозил** ${target}` });
   }
 };

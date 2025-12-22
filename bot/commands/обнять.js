@@ -48,12 +48,6 @@ module.exports = {
 
     const variant = variantsОбнять[Math.floor(Math.random() * variantsОбнять.length)];
 
-    const embed = new EmbedBuilder()
-      .setColor('#FF69B4')
-      .setTitle('🤗 Объятие!')
-      .setDescription(`${interaction.user} **${variant}** ${target}`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ content: `${interaction.user} **${variant}** ${target}` });
   }
 };

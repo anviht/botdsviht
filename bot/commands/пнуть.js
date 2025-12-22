@@ -49,12 +49,6 @@ module.exports = {
 
     const variant = variantsПинок[Math.floor(Math.random() * variantsПинок.length)];
 
-    const embed = new EmbedBuilder()
-      .setColor('#FFA500')
-      .setTitle('👢 Пинок!')
-      .setDescription(`${interaction.user} **${variant}** ${target}`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ content: `${interaction.user} **${variant}** ${target}` });
   }
 };

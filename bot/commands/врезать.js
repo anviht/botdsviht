@@ -50,12 +50,6 @@ module.exports = {
 
     const variant = variantsВрез[Math.floor(Math.random() * variantsВрез.length)];
 
-    const embed = new EmbedBuilder()
-      .setColor('#FF4444')
-      .setTitle('💢 Врезание!')
-      .setDescription(`${interaction.user} **${variant}** ${target}`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ content: `${interaction.user} **${variant}** ${target}` });
   }
 };

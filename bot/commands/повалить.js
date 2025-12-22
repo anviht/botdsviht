@@ -37,12 +37,6 @@ module.exports = {
       });
     }
 
-    const embed = new EmbedBuilder()
-      .setColor('#E91E63')
-      .setTitle('⬇️ Падение!')
-      .setDescription(`${interaction.user} **повалил** ${target} **на землю**`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ content: `${interaction.user} **повалил** ${target} **на землю**` });
   }
 };

@@ -50,12 +50,6 @@ module.exports = {
 
     const variant = variantsУдар[Math.floor(Math.random() * variantsУдар.length)];
 
-    const embed = new EmbedBuilder()
-      .setColor('#FF6B6B')
-      .setTitle('⚔️ Удар!')
-      .setDescription(`${interaction.user} **${variant}** ${target}`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ content: `${interaction.user} **${variant}** ${target}` });
   }
 };

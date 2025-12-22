@@ -37,12 +37,6 @@ module.exports = {
       });
     }
 
-    const embed = new EmbedBuilder()
-      .setColor('#00FF00')
-      .setTitle('🤝 Помощь!')
-      .setDescription(`${interaction.user} **оказал помощь** ${target}`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ content: `${interaction.user} **оказал помощь** ${target}` });
   }
 };

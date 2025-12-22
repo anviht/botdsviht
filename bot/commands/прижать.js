@@ -37,12 +37,6 @@ module.exports = {
       });
     }
 
-    const embed = new EmbedBuilder()
-      .setColor('#FF6B9D')
-      .setTitle('📌 Прижатие!')
-      .setDescription(`${interaction.user} **прижал** ${target} **к стене**`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ content: `${interaction.user} **прижал** ${target} **к стене**` });
   }
 };

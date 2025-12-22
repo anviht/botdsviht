@@ -37,12 +37,6 @@ module.exports = {
       });
     }
 
-    const embed = new EmbedBuilder()
-      .setColor('#9C27B0')
-      .setTitle('🖐️ Захват!')
-      .setDescription(`${interaction.user} **схватил** ${target}`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ content: `${interaction.user} **схватил** ${target}` });
   }
 };

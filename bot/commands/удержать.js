@@ -37,12 +37,6 @@ module.exports = {
       });
     }
 
-    const embed = new EmbedBuilder()
-      .setColor('#00BCD4')
-      .setTitle('🚫 Удержание!')
-      .setDescription(`${interaction.user} **удерживает** ${target}`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ content: `${interaction.user} **удерживает** ${target}` });
   }
 };

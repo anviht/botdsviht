@@ -47,12 +47,6 @@ module.exports = {
 
     const variant = variantsПоцеловать[Math.floor(Math.random() * variantsПоцеловать.length)];
 
-    const embed = new EmbedBuilder()
-      .setColor('#FF1493')
-      .setTitle('💋 Поцелуй!')
-      .setDescription(`${interaction.user} **${variant}** ${target}`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ content: `${interaction.user} **${variant}** ${target}` });
   }
 };

@@ -37,12 +37,6 @@ module.exports = {
       });
     }
 
-    const embed = new EmbedBuilder()
-      .setColor('#FFD700')
-      .setTitle('🤜 Толчок!')
-      .setDescription(`${interaction.user} **толкнул** ${target}`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ content: `${interaction.user} **толкнул** ${target}` });
   }
 };
