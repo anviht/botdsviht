@@ -26,7 +26,7 @@ module.exports = {
     
     if (interaction.channelId !== RP_CHANNEL_ID) {
       return await interaction.reply({
-        content: '❌ РП команды доступны только в <#1452769544484683959>',
+        content: '❌ РП команды доступны только в канале рп',
         ephemeral: true
       });
     }
