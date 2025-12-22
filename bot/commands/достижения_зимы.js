@@ -1,12 +1,24 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../libs/db');
 
+const GAME_CHANNEL_ID = '1450486721878954006';
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('достижения_зимы')
     .setDescription('🏆 Просмотр новогодних достижений и статистики'),
 
   async execute(interaction) {
+    // Проверка на правильный канал
+    if (interaction.channelId !== GAME_CHANNEL_ID) {
+      const embed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle('❌ Неправильный канал!')
+        .setDescription(`Эту команду можно использовать только в <#${GAME_CHANNEL_ID}>\n\nИди в игровой канал! 🎮`)
+        .setThumbnail(interaction.user.displayAvatarURL());
+      return await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
     await db.ensureReady();
     const userId = interaction.user.id;
 

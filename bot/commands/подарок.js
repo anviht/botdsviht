@@ -22,12 +22,24 @@ const GIFTS = [
   { emoji: '🪨', name: 'Уголёк от Деда Мороза', points: -25, rarity: 'coal', probability: 0.02 }
 ];
 
+const GAME_CHANNEL_ID = '1450486721878954006';
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('подарок')
     .setDescription('🎁 Открыть новогодний подарок - 1 раз в день'),
 
   async execute(interaction) {
+    // Проверка на правильный канал
+    if (interaction.channelId !== GAME_CHANNEL_ID) {
+      const embed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle('❌ Неправильный канал!')
+        .setDescription(`Эту команду можно использовать только в <#${GAME_CHANNEL_ID}>\n\nИди в игровой канал! 🎮`)
+        .setThumbnail(interaction.user.displayAvatarURL());
+      return await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
     await db.ensureReady();
     const userId = interaction.user.id;
     const now = new Date();

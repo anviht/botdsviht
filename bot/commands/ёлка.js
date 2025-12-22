@@ -2,6 +2,8 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const db = require('../libs/db');
 const pointSystem = require('../libs/pointSystem');
 
+const GAME_CHANNEL_ID = '1450486721878954006';
+
 // Различные украшения для ёлки
 const DECORATIONS = [
   { emoji: '🔴', name: 'Красный шар', rarity: 'common' },
@@ -22,6 +24,16 @@ module.exports = {
     .setDescription('🎄 Украсить новогоднюю ёлку - 1 раз в день'),
 
   async execute(interaction) {
+    // Проверка на правильный канал
+    if (interaction.channelId !== GAME_CHANNEL_ID) {
+      const embed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle('❌ Неправильный канал!')
+        .setDescription(`Эту команду можно использовать только в <#${GAME_CHANNEL_ID}>\n\nИди в игровой канал! 🎮`)
+        .setThumbnail(interaction.user.displayAvatarURL());
+      return await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
     await db.ensureReady();
     const userId = interaction.user.id;
     const now = new Date();
